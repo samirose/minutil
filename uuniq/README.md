@@ -1,0 +1,29 @@
+## Uuniq
+
+`uuniq`: unordered uniq, like POSIX `uniq`, but does not require the input to be sorted in order to remove duplicate lines. Uses a hash trie to keep track of unique lines.
+
+Written in single C source file using arena-based memory allocation. Depends only on POSIX and minimally on libc. Heavily influenced and directly borrows from public domain contributions of Chris Wellons, http://nullprogram.com.
+
+## Compiling
+
+Use the provided Makefile or
+
+To compile the program:
+```shell
+$ cc -O2 -funroll-loops -s -o uuniq uuniq.c
+```
+
+To compile and run tests:
+```shell
+$ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./uuniq_test
+```
+
+To compile and run randomized test:
+```shell
+$ cc -DRANDTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_randtest uuniq.c && ./uuniq_randtest
+```
+
+## TODO
+- Fix bug found in randomized test (as committed)
+- Add fuzz testing
+- Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
