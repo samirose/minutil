@@ -359,7 +359,6 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, byte *mem, iz cap)
 // written during tests. The main program is also run repeatedly in the
 // same process with the environment reset between tests.
 #include <setjmp.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -510,6 +509,8 @@ int main(int argc, char **argv)
 
 #if TEST
 
+#include <stdio.h>
+
 static void test_basic(Arena scratch)
 {
     puts("TEST: uuniq [filename]");
@@ -601,7 +602,7 @@ int main(void)
 
 #elif RANDTEST
 
-#include <unistd.h>
+#include <stdio.h>
 
 static u64 rand64(u64 *rng)
 {
@@ -662,7 +663,8 @@ static void test_random(Arena scratch)
                 a = t;
                 i++;
             } else {
-                write(2, "\nDUP\n", 5);
+                // DEBUG
+                fprintf(stderr, "DUP\n");
             }
         }
 
@@ -684,10 +686,15 @@ static void test_random(Arena scratch)
 
         affirm(status == STATUS_OK);
 
+        // DEBUG
         if (!equals(plt->output, expectedoutput)) {
-            write(2, plt->output.data, plt->output.len);
-            write(2, "---------\n", 10);
-            write(2, expectedoutput.data, expectedoutput.len);
+            fprintf(stderr, "%.*s", (i32)plt->input.len, plt->input.data);
+            fprintf(stderr, "---------\n");
+            fprintf(stderr, "%.*s", (i32)expectedoutput.len, expectedoutput.data);
+            fprintf(stderr, "---------\n");
+            fprintf(stderr, "%.*s", (i32)plt->output.len, plt->output.data);
+            fprintf(stderr, "%ld <-> %ld", expectedoutput.len, plt->output.len);
+            fflush(stderr);
         }
 
         affirm(equals(plt->output, expectedoutput));
