@@ -646,22 +646,22 @@ static void test_random(Arena scratch)
         Arena a = scratch;
         Inputline *inputlines = new(&a, uniqlines, Inputline);
         Str expectedoutput = {0};
-        for (i32 i = 0; i < uniqlines;) {
+        for (i32 l = 0; l < uniqlines;) {
             i32 linelen = randrange(&rng, 0, maxlinelen + 1);
             // extend the expected output with a new random line in a temporary arena
             Arena t = a;
             Strpair extended = extend(&t, expectedoutput, linelen + 1 /* for newline */);
             fill_randomchars(extended.tail, &rng);
             extended.tail.data[linelen] = '\n';
-            i32 j = 0;
-            for (; j < i && !equals(inputlines[j].line, extended.tail); j++) {}
-            if (j == i) {
+            i32 i = 0;
+            for (; i < l && !equals(inputlines[i].line, extended.tail); i++) {}
+            if (i == l) {
                 // line was unique, save it and commit it to the expected output
-                inputlines[i].line = extended.tail;
-                inputlines[i].repeats = randrange(&rng, 1, maxrepeatedlines + 1);
+                inputlines[l].line = extended.tail;
+                inputlines[l].repeats = randrange(&rng, 1, maxrepeatedlines + 1);
                 expectedoutput = extended.head;
                 a = t;
-                i++;
+                l++;
             } else {
                 // DEBUG
                 fprintf(stderr, "DUP\n");
