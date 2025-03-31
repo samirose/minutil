@@ -591,12 +591,47 @@ static void test_basic(Arena scratch)
     );
 }
 
+static void test_regression(Arena scratch) {
+    puts("TEST REGRESSION: uuniq");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    Str longline = {0};
+    while (longline.len < 999) {
+        longline = concat(&a, longline, S("0123456789"));
+    }
+    longline = concat(&a, longline, S("\n"));
+    plt->input = concat(&a, plt->input, longline);
+    plt->input = concat(&a, plt->input, longline);
+    plt->input = concat(&a, plt->input, longline);
+    plt->input = concat(&a, plt->input, longline);
+    // Uncomment to fail the test
+    //plt->input = concat(&a, plt->input, longline);
+
+// DEBUG
+    fprintf(stderr, "%ld\n", longline.len);
+    fflush(stderr);
+
+    expect(
+        STATUS_OK,
+        longline,
+        ""
+    );
+
+    // DEBUG
+    fprintf(stderr, "%.*s", (i32)plt->output.len, plt->output.data);
+}
+
 int main(void)
 {
     i32   cap = 1<<20;
     byte *mem = malloc(cap);
     Arena a   = {0, mem, mem+cap};
     test_basic(a);
+    test_regression(a);
     puts("all tests passed");
 }
 
