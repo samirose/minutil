@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-03-16"
+#define VERSION "2025-04-02"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
@@ -178,11 +178,12 @@ static void refill(Input *b)
     }
 }
 
-// Return the next line, viewing the input buffer if possible.
+// Return the next line, allocated in Arena a.
 // Does not include newline, the line is empty on end of file.
 static Str nextline(Input *b, Arena *a)
 {
     Str line = {0};
+    b32 found = 0;
     do {
         if (b->off == b->len) {
             refill(b);
@@ -190,20 +191,15 @@ static Str nextline(Input *b, Arena *a)
 
         i32 cut = b->off;
         for (; cut<b->len && b->buf[cut]!='\n'; cut++) {}
-        b32 found = cut < b->len;
+        found = cut < b->len;
 
         Str tail  = {0};
         tail.data = b->buf + b->off;
         tail.len  = cut - b->off;
         b->off    = cut + found;
 
-        if (found) {
-            // Avoid copy if possible; the common case
-            line = line.data ? concat(a, line, tail) : tail;
-            break;
-        }
         line = concat(a, line, tail);
-    } while (!b->eof);
+    } while (!b->eof && !found);
     return line;
 }
 
@@ -591,10 +587,9 @@ static void test_regression(Arena scratch) {
     plt->input = concat(&a, plt->input, longline);
     plt->input = concat(&a, plt->input, longline);
     plt->input = concat(&a, plt->input, longline);
-    // Uncomment to fail the test
-    //plt->input = concat(&a, plt->input, longline);
+    plt->input = concat(&a, plt->input, longline);
 
-// DEBUG
+    // DEBUG
     fprintf(stderr, "%ld\n", longline.len);
     fflush(stderr);
 
