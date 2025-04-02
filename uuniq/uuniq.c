@@ -1,6 +1,9 @@
 // uuniq: unordered uniq, like POSIX uniq, but does not require the input to
 //        be sorted in order to remove duplicate lines.
 //
+// Requires a C11 compiler and a few GCC/Clang builtins. Depends on POSIX for
+// I/O and minimally on libc.
+//
 // posix:  $ cc        -O2 -funroll-loops -s                    -o uuniq      uuniq.c
 // test:   $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c
 //
