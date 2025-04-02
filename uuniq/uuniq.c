@@ -102,14 +102,6 @@ static void *alloc(Arena *a, iz count, iz size, iz align)
     return mset(r, 0, count*size);
 }
 
-static Str trimlast(Str s, u8 ch)
-{
-    if (s.len && s.data[s.len-1] == ch) {
-        s.len--;
-    }
-    return s;
-}
-
 static b32 equals(Str a, Str b)
 {
     if (a.len != b.len) {
@@ -319,7 +311,6 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         if (!line.len && bi->eof) {
             break;
         }
-        line = trimlast(line, '\n');
         if (upsert(&lineset, line, &m) == 1) {
             a = m;  // Commit the line and set entry to arena
             print(bo, line);
