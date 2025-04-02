@@ -18,12 +18,16 @@ To compile and run tests:
 $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./uuniq_test
 ```
 
-To compile and run randomized test:
+To compile and run randomised test:
 ```shell
-$ cc -DRANDTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_randtest uuniq.c && ./uuniq_randtest
+$ cc -DRANDTEST -g3 -O2 -fsanitize=undefined -fsanitize-trap -o uuniq_randtest uuniq.c && ./uuniq_randtest
 ```
 
 ## TODO
-- Fix bug found in randomized test (as committed)
+- Improve randomised test
 - Add fuzz testing
+- Add input and output file arguments
+- Add Linux x86 CRT-free platform
 - Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
+- Maybe add Linux aarch64 CRT-free platform
+- Test 32bit big endian compatibility using QEMU
