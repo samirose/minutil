@@ -144,14 +144,6 @@ static Strpair extend(Arena *a, Str head, iz len)
     return r;
 }
 
-static Str span(u8 *beg, u8 *end)
-{
-    Str r = {0};
-    r.data = beg;
-    r.len  = end - beg;
-    return r;
-}
-
 typedef struct {
     Plt *plt;
     i32  len;
