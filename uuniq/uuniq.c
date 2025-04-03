@@ -168,15 +168,12 @@ static void refill(Input *b)
     affirm(b->off == b->len);
     if (!b->eof) {
         b->len = b->off = 0;
-        i32 want = countof(b->buf);
-        if (want) {
-            i32 r = plt_read(b->plt, b->buf, want);
-            if (r < 0) {
-                r = 0;
-                b->err = 1;
-            }
-            b->len = r;
+        i32 r = plt_read(b->plt, b->buf, countof(b->buf));
+        if (r < 0) {
+            r = 0;
+            b->err = 1;
         }
+        b->len = r;
         b->eof = !b->len;
     }
 }
