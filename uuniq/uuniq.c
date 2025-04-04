@@ -329,13 +329,14 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, byte *mem, iz cap)
 // Platform defined external to this source
 
 
-#elif defined(TEST) || defined(RANDTEST)
+#elif TEST
 // All tests run on a virtual file system, so no real files are read nor
 // written during tests. The main program is also run repeatedly in the
 // same process with the environment reset between tests.
 #include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 struct Plt {
     // Output
@@ -429,62 +430,7 @@ static Plt *newtestplt(Arena *a, iz cap)
         affirm(r!=STATUS_OK || equals(plt->output, s)); \
     } while (0)
 
-#else // POSIX
-
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-
-struct Plt {
-    // Virtual file descriptor table
-    int fds[3];
-};
-
-static b32 plt_open(Plt *plt, i32 fd, u8 *path, b32 trunc, Arena *a)
-{
-    (void)a;
-    int mode = fd==0 ? O_RDONLY : O_CREAT|O_WRONLY;
-    mode |= trunc ? O_TRUNC : 0;
-    plt->fds[fd] = open((char *)path, mode, 0666);
-    return plt->fds[fd] != -1;
-}
-
-static i32 plt_read(Plt *plt, u8 *buf, i32 len)
-{
-    return (i32)read(plt->fds[0], buf, len);
-}
-
-static b32 plt_write(Plt *plt, i32 fd, u8 *buf, i32 len)
-{
-    return len == write(plt->fds[fd], buf, len);
-}
-
-static void plt_exit(Plt *plt, i32 r)
-{
-    (void)plt;
-    _exit(r);
-}
-
-int main(int argc, char **argv)
-{
-    Plt   plt = {{0, 1, 2}};
-    iz    cap = (iz)1<<24; // Initial memory 16MiB
-    byte *mem = mmap(0, cap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
-    if (mem == MAP_FAILED) {
-        Str msg = S("uuniq: not enough memory");
-        plt_write(&plt, 2, msg.data, msg.len);
-        plt_exit(&plt, STATUS_OOM);
-    }
-    return uuniq(argc, (u8 **)argv, &plt, mem, cap);
-}
-
-#endif
-
-#if TEST
-
-#include <stdio.h>
-
-static void test_basic(Arena scratch)
+    static void test_basic(Arena scratch)
 {
     puts("TEST: uuniq [filename]");
 
@@ -564,52 +510,54 @@ static void test_basic(Arena scratch)
     );
 }
 
-static void test_regression(Arena scratch) {
-    puts("TEST REGRESSION: uuniq");
-
-    Arena a   = {0};
-    Plt  *plt = 0;
-
-    a   = scratch;
-    plt = newtestplt(&a, 1<<12);
-    Str longline = {0};
-    while (longline.len < 999) {
-        longline = concat(&a, longline, S("0123456789"));
-    }
-    longline = concat(&a, longline, S("\n"));
-    plt->input = concat(&a, plt->input, longline);
-    plt->input = concat(&a, plt->input, longline);
-    plt->input = concat(&a, plt->input, longline);
-    plt->input = concat(&a, plt->input, longline);
-    plt->input = concat(&a, plt->input, longline);
-
-    // DEBUG
-    fprintf(stderr, "%ld\n", longline.len);
-    fflush(stderr);
-
-    expect(
-        STATUS_OK,
-        longline,
-        ""
-    );
-
-    // DEBUG
-    fprintf(stderr, "%.*s", (i32)plt->output.len, plt->output.data);
-}
-
 int main(void)
 {
     i32   cap = 1<<20;
     byte *mem = malloc(cap);
     Arena a   = {0, mem, mem+cap};
     test_basic(a);
-    test_regression(a);
     puts("all tests passed");
 }
 
 #elif RANDTEST
 
+#include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
+
+struct Plt {
+    Str input;
+    i32 inoff;
+    Str output;
+    i32 outoff;
+    i32 cap;
+};
+
+//static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
+static void plt_exit(Plt *, i32) { affirm(0); }
+
+static i32  plt_read(Plt *plt, u8 *buf, i32 len)
+{
+    iz avail = plt->input.len - plt->inoff;
+    len = avail<len ? (i32)avail : len;
+    if (len) {
+        memcpy(buf, plt->input.data+plt->inoff, len);
+        plt->inoff += len;
+    }
+    return len;
+}
+
+static b32 plt_write(Plt *plt, i32 fd, u8 *buf, i32 len)
+{
+    affirm(fd == 1);
+    affirm(len <= plt->cap - plt->outoff);
+    if (len) {
+        memcpy(plt->output.data+plt->outoff, buf, len);
+        plt->output.len += len;
+        plt->outoff += len;
+    }
+    return 1;
+}
 
 static u64 rand64(u64 *rng)
 {
@@ -625,7 +573,7 @@ static void fill_randomchars(Str s, u64 *rng) {
     u8* p = s.data;
     iz len = s.len;
     while (len > 0) {
-        u8 ch = (u8)randrange(rng, 32, 127);
+        u8 ch = (u8)randrange(rng, 0, 255);
         if (ch != '\n') {
             *(p++) = ch;
             len--;
@@ -643,74 +591,62 @@ static void test_random(Arena scratch)
     puts("RANDTEST: uuniq");
 
     u64 rng = 1;
-    i32 uniqlines = 250;
-    i32 maxrepeatedlines = 3;
-    i32 maxlinelen = 10;
+    i32 maxuniqlines = 500;
+    i32 maxrepeatedlines = 10;
+    i32 reglinelen = 60;
+    i32 longlinelen = 5000;
 
-    do {
-        printf("uniqlines=%d, maxrepeatedlines=%d, maxlinelen=%d\n", uniqlines, maxrepeatedlines, maxlinelen);
+    for (u64 r = 1;; r++) {
+        if (!(r % 10000)) {
+            printf("%llu\n", (long long)r);
+        }
 
+        Plt plt = {0};
         Arena a = scratch;
+        i32 uniqlines = randrange(&rng, 0, maxuniqlines+1);
         Inputline *inputlines = new(&a, uniqlines, Inputline);
         Str expectedoutput = {0};
         for (i32 l = 0; l < uniqlines;) {
-            i32 linelen = randrange(&rng, 0, maxlinelen + 1);
+          i32 linelen = randrange(&rng, 0, 100) < 90
+              ? randrange(&rng, 0, reglinelen+1)
+              : randrange(&rng, reglinelen+1, longlinelen+1);
             // extend the expected output with a new random line in a temporary arena
             Arena t = a;
-            Strpair extended = extend(&t, expectedoutput, linelen + 1 /* for newline */);
-            fill_randomchars(extended.tail, &rng);
-            extended.tail.data[linelen] = '\n';
+            Strpair ext = extend(&t, expectedoutput, linelen+1 /*for '\n'*/);
+            fill_randomchars(ext.tail, &rng);
+            ext.tail.data[linelen] = '\n';
             i32 i = 0;
-            for (; i < l && !equals(inputlines[i].line, extended.tail); i++) {}
+            for (; i < l && !equals(inputlines[i].line, ext.tail); i++) {}
             if (i == l) {
                 // line was unique, save it and commit it to the expected output
-                inputlines[l].line = extended.tail;
-                inputlines[l].repeats = randrange(&rng, 1, maxrepeatedlines + 1);
-                expectedoutput = extended.head;
+                inputlines[l].line = ext.tail;
+                inputlines[l].repeats = randrange(&rng, 1, maxrepeatedlines+1);
+                expectedoutput = ext.head;
                 a = t;
                 l++;
-            } else {
-                // DEBUG
-                fprintf(stderr, "DUP\n");
             }
         }
 
-        Plt *plt = newtestplt(&a, uniqlines * maxlinelen * 2);
-
         for (i32 l = 0; l < uniqlines;) {
-            i32 i = randrange(&rng, 0, l + 1);
+            i32 i = randrange(&rng, 0, l+1);
             for (; !inputlines[i].repeats; i++) {}
             affirm(i <= l);
             Inputline *inputline = &inputlines[i];
-            plt->input = concat(&a, plt->input, inputline->line);
-            inputline->repeats--;
-            if (i == l) l++;
+            plt.input = concat(&a, plt.input, inputlines[i].line);
+            inputlines[i].repeats--;
+            l += i == l;
         }
+
+        plt.cap = uniqlines * (reglinelen + longlinelen);
+        plt.output.data = new(&a, plt.cap, u8);
 
         char *argv[] = {"uuniq", 0};
         i32 argc = countof(argv) - 1;
-        i32 status = uuniq(argc, (u8 **)argv, plt, a.beg, a.end-a.beg);
+        i32 status = uuniq(argc, (u8 **)argv, &plt, a.beg, a.end-a.beg);
 
         affirm(status == STATUS_OK);
-
-        // DEBUG
-        if (!equals(plt->output, expectedoutput)) {
-            fprintf(stderr, "%.*s", (i32)plt->input.len, plt->input.data);
-            fprintf(stderr, "---------\n");
-            fprintf(stderr, "%.*s", (i32)expectedoutput.len, expectedoutput.data);
-            fprintf(stderr, "---------\n");
-            fprintf(stderr, "%.*s", (i32)plt->output.len, plt->output.data);
-            fprintf(stderr, "%ld <-> %ld", expectedoutput.len, plt->output.len);
-            fflush(stderr);
-        }
-
-        affirm(equals(plt->output, expectedoutput));
-
-        uniqlines /= 10;
-        maxrepeatedlines *= 2;
-        maxlinelen *= 10;
-
-    } while (uniqlines > 1);
+        affirm(equals(plt.output, expectedoutput));
+    }
 }
 
 int main(void)
@@ -720,6 +656,55 @@ int main(void)
     Arena a   = {0, mem, mem+cap};
     test_random(a);
     puts("all tests passed");
+}
+
+#else // POSIX
+
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+struct Plt {
+    // Virtual file descriptor table
+    int fds[3];
+};
+
+/*
+static b32 plt_open(Plt *plt, i32 fd, u8 *path, b32 trunc, Arena *a)
+{
+    int mode = fd==0 ? O_RDONLY : O_CREAT|O_WRONLY;
+    mode |= trunc ? O_TRUNC : 0;
+    plt->fds[fd] = open((char *)path, mode, 0666);
+    return plt->fds[fd] != -1;
+}
+*/
+
+static i32 plt_read(Plt *plt, u8 *buf, i32 len)
+{
+    return (i32)read(plt->fds[0], buf, len);
+}
+
+static b32 plt_write(Plt *plt, i32 fd, u8 *buf, i32 len)
+{
+    return len == write(plt->fds[fd], buf, len);
+}
+
+static void plt_exit(Plt *, i32 r)
+{
+    _exit(r);
+}
+
+int main(int argc, char **argv)
+{
+    Plt   plt = {{0, 1, 2}};
+    iz    cap = (iz)1<<24; // Initial memory 16MiB
+    byte *mem = mmap(0, cap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    if (mem == MAP_FAILED) {
+        Str msg = S("uuniq: not enough memory");
+        plt_write(&plt, 2, msg.data, msg.len);
+        plt_exit(&plt, STATUS_OOM);
+    }
+    return uuniq(argc, (u8 **)argv, &plt, mem, cap);
 }
 
 #endif
