@@ -24,10 +24,10 @@ $ cc -DRANDTEST -g3 -O2 -fsanitize=undefined -fsanitize-trap -o uuniq_randtest u
 ```
 
 ## TODO
-- Improve randomised test
+- Add benchmark and use it guide optimisations
 - Add fuzz testing
 - Add input and output file arguments
 - Add Linux x86 CRT-free platform
 - Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
 - Maybe add Linux aarch64 CRT-free platform
-- Test 32bit big endian compatibility using QEMU
+- Test 32bit big endian compatibility using QEMU, see https://nullprogram.com/blog/2021/08/21/.
