@@ -30,7 +30,7 @@ typedef struct Arena Arena;
 
 // Platform abstraction
 typedef struct Plt Plt;
-static b32  plt_open(Plt *, i32 fd, u8 *, b32 trunc, Arena *);  // open(2)
+//static b32  plt_open(Plt *, i32 fd, u8 *, b32 trunc, Arena *);  // open(2)
 static i32  plt_read(Plt *, u8 *, i32);                         // read(2)
 static b32  plt_write(Plt *, i32 fd, u8 *, i32);                // write(2)
 static void plt_exit(Plt *, i32);                               // _exit(2)
@@ -281,9 +281,7 @@ static i64 upsert(LineSet **set, Str line, Arena *a)
     return (*set)->count = 1;
 }
 
-static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
-    (void)argc;
-    (void)argv;
+static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     i32 r = STATUS_OK;
     Plt *plt = ctx->plt;
     Input *bi = newinput(&a, plt);
@@ -356,10 +354,8 @@ struct Plt {
     jmp_buf *oom;  // pointer hides ugly GDB printout
 };
 
-static b32 plt_open(Plt *plt, i32 fd, u8 *buf, b32 trunc, Arena *a)
+static b32 plt_open(Plt *plt, i32 fd, u8 */*path*/, b32 trunc, Arena *)
 {
-    (void)a;
-    (void)buf;
     switch (fd) {
     case  0: plt->inpos = 0;
              break;

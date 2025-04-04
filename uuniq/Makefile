@@ -3,7 +3,7 @@
 .PHONY: all test randtest clean
 
 CC     = cc
-CFLAGS = -W
+CFLAGS = -W -Wno-c23-extensions
 LDLIBS =
 BINS   = uuniq uuniq_test uuniq_randtest
 
