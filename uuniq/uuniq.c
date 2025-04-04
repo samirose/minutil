@@ -57,9 +57,7 @@ typedef struct {
 
 typedef struct Output Output;
 static void print(Output *, Str);
-static void printq(Output *, Str);
 static void printu8(Output *, u8);
-static void printi64(Output *, i64);
 static void flush(Output *);
 
 typedef struct {
