@@ -18,13 +18,10 @@ To compile and run tests:
 $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./uuniq_test
 ```
 
-To compile and run randomised test:
-```shell
-$ cc -DRANDTEST -g3 -O2 -fsanitize=undefined -fsanitize-trap -o uuniq_randtest uuniq.c && ./uuniq_randtest
-```
+For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Add benchmark and use it guide optimisations
+- Refine benchmark input to contain duplicated lines to be more representative of actual use
 - Add fuzz testing
 - Add input and output file arguments
 - Add Linux x86 CRT-free platform

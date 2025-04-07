@@ -42,6 +42,7 @@ static i32  uuniq(i32, u8 **, Plt *, byte *, iz);               // main
 #define affirm(c)       while (!(c)) __builtin_unreachable()
 #define new(a, n, t)    (t *)alloc(a, n, sizeof(t), _Alignof(t))
 #define S(s)            (Str){(u8 *)s, sizeof(s)-1}
+#define maxof(t)        ((t)-1<1 ? (((t)1<<(sizeof(t)*8-2))-1)*2+1 : (t)-1)
 #define mset(d, c, n)   __builtin_memset(d, c, n)
 #define mcpy(d, s, n)   __builtin_memcpy(d, s, n)
 
@@ -656,6 +657,114 @@ int main(void)
     Arena a   = {0, mem, mem+cap};
     test_random(a);
     puts("all tests passed");
+}
+
+#elif BENCH
+// Benchmark for verifing that any optimisations have an effect in the right direction
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct Plt {
+    Str input;
+    iz  inpos;
+    Str output;
+    iz  outpos;
+};
+
+static i64 perf_counter(void)
+{
+    #ifdef __x86_64__
+        // NOTE: x86_64 not tested yet
+        uz hi, lo;
+        asm volatile ("rdtscp" : "=d"(hi), "=a"(lo) :: "cx", "memory");
+        return (i64)hi<<32 | lo;
+    #elif __aarch64__
+        uint64_t c;
+        asm volatile ("mrs %0, cntvct_el0" : "=r" (c));
+        return c;
+    #else
+        #error("BENCH: Unsupported platform")
+    #endif
+}
+
+//static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
+static void plt_exit(Plt *, i32) { affirm(0); }
+
+static i32 plt_read(Plt *plt, u8 *buf, i32 len)
+{
+    iz rem = plt->input.len - plt->inpos;
+    len = rem<len ? (i32)rem : len;
+    memcpy(buf, plt->input.data+plt->inpos, len);
+    plt->inpos += len;
+    return len;
+}
+
+static b32 plt_write(Plt *plt, i32, u8 *buf, i32 len)
+{
+    if (plt->output.data) {
+        affirm(plt->output.len-plt->outpos >= len);
+        memcpy(plt->output.data+plt->outpos, buf, len);
+        plt->outpos += len;
+    }
+    return 1;
+}
+
+static void report(char *cmd, i64 time)
+{
+    printf("%-20s%lld\n", cmd, (long long)time);
+}
+
+static u64 rand64(u64 *rng)
+{
+    return (*rng = *rng*0x3243f6a8885a308d + 1);
+}
+
+static i32 randrange(u64 *rng, i32 lo, i32 hi)
+{
+    return (i32)(((rand64(rng)>>32) * (hi - lo))>>32) + lo;
+}
+
+int main(void)
+{
+    i32   cap = 1<<28;
+    byte *mem = malloc(cap);
+    Arena a   = {0, mem, mem+cap};
+    memset(mem, 0xa5, cap);  // pre-commit whole arena
+
+    // Generate random ASCII lines as input.
+    // The input should be more representative for uuniq's case, which is that
+    // the input is expected to contain duplicated lines.
+    Str random = {0};
+    random.len = 1<<20;
+    random.data = new(&a, random.len, u8);
+    u64 rng  = 1;
+    for (iz l = 0; l < random.len;) {
+        i32 endl = l + randrange(&rng, 0, 200);
+        endl = endl < random.len ? endl : random.len - 1;
+        for (iz i = l; i < endl; i++) {
+            random.data[i] = (u8)randrange(&rng, 32, 126);
+        }
+        random.data[endl] = '\n';
+        l = endl + 1;
+    }
+
+    {
+        Arena tmp = a;
+        Plt  *plt = new(&tmp, 1, Plt);
+        plt->input = random;
+
+        i64 best = maxof(i64);
+        for (i32 n = 0; n < 1<<9; n++) {
+            plt->inpos = 0;
+            i64 total = -perf_counter();
+            i32 r = uuniq(0, 0, plt, tmp.beg, tmp.end-tmp.beg);
+            affirm(r == STATUS_OK);
+            total += perf_counter();
+            best = total<best ? total : best;
+        }
+        report("uuniq ASCII", best>>8);
+    }
 }
 
 #else // POSIX
