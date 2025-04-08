@@ -431,7 +431,7 @@ static Plt *newtestplt(Arena *a, iz cap)
         affirm(r!=STATUS_OK || equals(plt->output, s)); \
     } while (0)
 
-    static void test_basic(Arena scratch)
+static void test_basic(Arena scratch)
 {
     puts("TEST: uuniq [filename]");
 
