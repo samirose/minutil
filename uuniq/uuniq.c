@@ -88,8 +88,10 @@ static Arena newarena(Uuniq *ctx, byte *mem, iz cap) {
 
 static void oom(Uuniq *ctx)
 {
-    print(ctx->be, S("uuniq: out of memory\n"));
-    flush(ctx->be);
+    if (ctx && ctx->be) {
+        print(ctx->be, S("uuniq: out of memory\n"));
+        flush(ctx->be);
+    }
     plt_exit(ctx->plt, STATUS_OOM);
 }
 
