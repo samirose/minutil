@@ -405,6 +405,7 @@ static b32 plt_write(Plt *plt, i32 fd, u8 *buf, i32 len)
         plt->output.len = plt->off + len;
     }
     memcpy(dst, buf, len);
+    plt->off += len;
     return 1;
 }
 
