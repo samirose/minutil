@@ -514,12 +514,88 @@ static void test_basic(Arena scratch)
     );
 }
 
+static void test_longlines(Arena scratch)
+{
+    puts("TEST: uuniq long lines");
+
+    Str longline = {0};
+    longline.data = new(&scratch, 1000, u8);
+    longline.len = 1000;
+    for (i32 i = 0; i < 1000; i++) {
+        longline.data[i] = '0' + i % 10;
+    }
+
+    {
+        Arena a  = scratch;
+        Plt *plt = newtestplt(&a, 1<<20);
+        plt->input = longline;
+        expect(
+            STATUS_OK,
+            concat(&a, longline, S("\n")),
+            ""
+        );
+    }
+
+    {
+        Arena a  = scratch;
+        Plt *plt = newtestplt(&a, 1<<20);
+        Str line = concat(&a, longline, S("\n"));
+        for (i32 i = 1; i <= 10; i++) {
+            plt->input = concat(&a, plt->input, line);
+        }
+        expect(
+            STATUS_OK,
+            line,
+            ""
+        );
+    }
+
+    {
+        Arena a  = scratch;
+        Plt *plt = newtestplt(&a, 1<<20);
+        for (i32 i = 1; i <= 10; i++) {
+            plt->input = concat(&a, plt->input, longline);
+        }
+        plt->input = concat(&a, plt->input, S("\n"));
+        Str expected = plt->input;
+        for (i32 i = 1; i <= 10; i++) {
+            plt->input = concat(&a, plt->input, longline);
+        }
+        expect(
+            STATUS_OK,
+            expected,
+            ""
+        );
+    }
+
+    {
+        Arena a  = scratch;
+        Plt *plt = newtestplt(&a, 1<<20);
+        Str line = concat(&a, longline, S("\n"));
+        for (i32 i = 0; i < 10; i++) {
+            Str l = {line.data+i, line.len-i};
+            plt->input = concat(&a, plt->input, l);
+        }
+        Str expected = plt->input;
+        for (i32 i = 9; i >= 0; i--) {
+            Str l = {line.data+i, line.len-i};
+            plt->input = concat(&a, plt->input, l);
+        }
+        expect(
+            STATUS_OK,
+            expected,
+            ""
+        );
+    }
+}
+
 int main(void)
 {
-    i32   cap = 1<<20;
+    i32   cap = 1<<24;
     byte *mem = malloc(cap);
     Arena a   = {0, mem, mem+cap};
     test_basic(a);
+    test_longlines(a);
     puts("all tests passed");
 }
 
