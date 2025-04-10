@@ -791,7 +791,7 @@ static b32 plt_write(Plt *plt, i32, u8 *buf, i32 len)
 
 static void report(char *cmd, i64 time)
 {
-    printf("%-20s%lld\n", cmd, (long long)time);
+    printf("%-40s%lld\n", cmd, (long long)time);
 }
 
 static u64 rand64(u64 *rng)
@@ -804,45 +804,82 @@ static i32 randrange(u64 *rng, i32 lo, i32 hi)
     return (i32)(((rand64(rng)>>32) * (hi - lo))>>32) + lo;
 }
 
+static Str randomlines(Arena *a, u64 *rng, i32 n, i32 maxlen, i32 maxrepeats) {
+    Str *lines = new(a, n, Str);
+    for (i32 i = 0; i < n; i++) {
+        Str *line = &lines[i];
+        line->len = randrange(rng, 1, maxlen + 1);
+        line->data = new(a, line->len, u8);
+        for (i32 ci = 0; ci < line->len; ci++) {
+            line->data[ci] = (u8)randrange(rng, 32, 126);
+        }
+    }
+    Str r = {0};
+    i32 rs = maxrepeats;
+    for (i32 i = 0; i < n;) {
+        i32 pick = rs-- > 0 ? randrange(rng, 0, i + 1) : i;
+        r = concat(a, r, lines[pick]);
+        r = concat(a, r, S("\n"));
+        if (pick == i) {
+            i++;
+            rs = maxrepeats;
+        }
+    }
+    return r;
+}
+
+static void runbench(char *cmd, Plt *plt, Arena a) {
+    i64 best = maxof(i64);
+    for (i32 n = 0; n < 1<<9; n++) {
+        plt->inpos = 0;
+        i64 total = -perf_counter();
+        i32 r = uuniq(0, 0, plt, a.beg, a.end-a.beg);
+        affirm(r == STATUS_OK);
+        total += perf_counter();
+        best = total<best ? total : best;
+    }
+    report(cmd, best);
+}
+
 int main(void)
 {
-    i32   cap = 1<<28;
+    i32   cap = 1<<24;
     byte *mem = malloc(cap);
     Arena a   = {0, mem, mem+cap};
     memset(mem, 0xa5, cap);  // pre-commit whole arena
 
-    // Generate random ASCII lines as input.
-    // The input should be more representative for uuniq's case, which is that
-    // the input is expected to contain duplicated lines.
-    Str random = {0};
-    random.len = 1<<20;
-    random.data = new(&a, random.len, u8);
-    u64 rng  = 1;
-    for (iz l = 0; l < random.len;) {
-        i32 endl = l + randrange(&rng, 0, 200);
-        endl = endl < random.len ? endl : random.len - 1;
-        for (iz i = l; i < endl; i++) {
-            random.data[i] = (u8)randrange(&rng, 32, 126);
-        }
-        random.data[endl] = '\n';
-        l = endl + 1;
+    puts("uuniq: BENCH");
+
+    {
+        u64 rng = 1;
+        Arena tmp = a;
+        Plt  *plt = new(&tmp, 1, Plt);
+        plt->input = randomlines(&tmp, &rng, 300, 30, 1000);
+        runbench("short lines", plt, tmp);
     }
 
     {
+        u64 rng = 1;
         Arena tmp = a;
         Plt  *plt = new(&tmp, 1, Plt);
-        plt->input = random;
+        plt->input = randomlines(&tmp, &rng, 30000, 30, 0);
+        runbench("short lines - no repeats", plt, tmp);
+    }
 
-        i64 best = maxof(i64);
-        for (i32 n = 0; n < 1<<9; n++) {
-            plt->inpos = 0;
-            i64 total = -perf_counter();
-            i32 r = uuniq(0, 0, plt, tmp.beg, tmp.end-tmp.beg);
-            affirm(r == STATUS_OK);
-            total += perf_counter();
-            best = total<best ? total : best;
-        }
-        report("uuniq ASCII", best>>8);
+    {
+        u64 rng = 1;
+        Arena tmp = a;
+        Plt  *plt = new(&tmp, 1, Plt);
+        plt->input = randomlines(&tmp, &rng, 60, 1000, 100);
+        runbench("long lines", plt, tmp);
+    }
+
+    {
+        u64 rng = 1;
+        Arena tmp = a;
+        Plt  *plt = new(&tmp, 1, Plt);
+        plt->input = randomlines(&tmp, &rng, 2500, 1000, 0);
+        runbench("long lines - no repeats", plt, tmp);
     }
 }
 
