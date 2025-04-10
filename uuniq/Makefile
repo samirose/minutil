@@ -1,12 +1,12 @@
 .POSIX:
 .SUFFIXES:
-.PHONY: all test randtest clean
+.PHONY: all test randtest bench clean
 
 CC     = cc
 COPT_FLAGS = -O2 -funroll-loops
 CFLAGS = -W -Wno-c23-extensions
 LDLIBS =
-BINS   = uuniq uuniq_test uuniq_randtest
+BINS   = uuniq uuniq_test uuniq_randtest uuniq_bench
 
 all: $(BINS)
 
