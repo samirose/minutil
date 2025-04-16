@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-04-02"
+#define VERSION "2025-04-16"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
@@ -179,12 +179,16 @@ static void refill(Input *b)
     }
 }
 
-// Return the next line, allocated in Arena a.
+typedef struct {
+    Str text;
+    b32 inbuf; // true if text is viewing the input buffer
+} Inputline;
+
+// Return the next line, viewing the input buffer if possible.
 // Does not include newline, the line is empty on end of file.
-static Str nextline(Input *b, Arena *a)
+static Inputline nextline(Input *b, Arena *a)
 {
-    Str line = {0};
-    b32 found = 0;
+    Inputline line = {0};
     do {
         if (b->off == b->len) {
             refill(b);
@@ -192,15 +196,25 @@ static Str nextline(Input *b, Arena *a)
 
         i32 cut = b->off;
         for (; cut<b->len && b->buf[cut]!='\n'; cut++) {}
-        found = cut < b->len;
+        b32 found = cut < b->len;
 
         Str tail  = {0};
         tail.data = b->buf + b->off;
         tail.len  = cut - b->off;
         b->off    = cut + found;
 
-        line = concat(a, line, tail);
-    } while (!b->eof && !found);
+        if (found) {
+            // Avoid copy if possible; the common case
+            if (!line.text.data) {
+                line.text = tail;
+                line.inbuf = 1;
+            } else {
+                line.text = concat(a, line.text, tail);
+            }
+            break;
+        }
+        line.text = concat(a, line.text, tail);
+    } while (!b->eof);
     return line;
 }
 
@@ -252,10 +266,10 @@ static void printu8(Output *b, u8 c)
     output(b, &c, 1);
 }
 
-typedef struct LineSet LineSet;
-struct LineSet {
-    LineSet *child[4];
-    Str line;
+typedef struct Strset Strset;
+struct Strset {
+    Strset *child[4];
+    Str str;
     i64 count;
 };
 
@@ -269,16 +283,20 @@ static u64 hash64(Str s)
     return h;
 }
 
-static i64 upsert(LineSet **set, Str line, Arena *a)
+static i64 upsert(Strset **set, Str str, b32 clonestr, Arena *a)
 {
-    for (uint64_t h = hash64(line); *set; h <<= 2) {
-        if (equals(line, (*set)->line)) {
+    for (uint64_t h = hash64(str); *set; h <<= 2) {
+        if (equals(str, (*set)->str)) {
             return ++(*set)->count;
         }
         set = &(*set)->child[h>>62];
     }
-    *set = new(a, 1, LineSet);
-    (*set)->line = line;
+    // new entry
+    if (clonestr) {
+        str = clone(a, str);
+    }
+    *set = new(a, 1, Strset);
+    (*set)->str = str;
     return (*set)->count = 1;
 }
 
@@ -286,7 +304,7 @@ static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     i32 r = STATUS_OK;
     Plt *plt = ctx->plt;
     Input *bi = newinput(&a, plt);
-    LineSet *lineset = 0;
+    Strset *lineset = 0;
     Output *bo = newoutput(&a, 1, plt);
     Output *be = newoutput(&a, 2, plt);
     ctx->be = be;
@@ -294,13 +312,13 @@ static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     for (;;) {
         // Read the next string to a copy of arena
         Arena m = a;
-        Str line = nextline(bi, &m);
-        if (!line.len && bi->eof) {
+        Inputline line = nextline(bi, &m);
+        if (!line.text.len && bi->eof) {
             break;
         }
-        if (upsert(&lineset, line, &m) == 1) {
+        if (upsert(&lineset, line.text, line.inbuf, &m) == 1) {
             a = m;  // Commit the line and set entry to arena
-            print(bo, line);
+            print(bo, line.text);
             printu8(bo, '\n');
         }
     }
@@ -661,14 +679,14 @@ static void fill_randomchars(Str s, u64 *rng) {
     }
 }
 
-typedef struct {
-    i32 repeats;
-    Str line;
-} Inputline;
-
 static void test_random(Arena scratch)
 {
     puts("RANDTEST: uuniq");
+
+    typedef struct {
+        i32 repeats;
+        Str line;
+    } Inputline;
 
     u64 rng = 1;
     i32 maxuniqlines = 500;
