@@ -859,7 +859,7 @@ int main(void)
     }
 
     {
-        u64 rng = 1;
+        u64 rng = 2;
         Arena tmp = a;
         Plt  *plt = new(&tmp, 1, Plt);
         plt->input = randomlines(&tmp, &rng, 30000, 30, 0);
@@ -867,7 +867,7 @@ int main(void)
     }
 
     {
-        u64 rng = 1;
+        u64 rng = 3;
         Arena tmp = a;
         Plt  *plt = new(&tmp, 1, Plt);
         plt->input = randomlines(&tmp, &rng, 60, 1000, 100);
@@ -875,7 +875,7 @@ int main(void)
     }
 
     {
-        u64 rng = 1;
+        u64 rng = 4;
         Arena tmp = a;
         Plt  *plt = new(&tmp, 1, Plt);
         plt->input = randomlines(&tmp, &rng, 2500, 1000, 0);
