@@ -729,7 +729,6 @@ static void test_random(Arena scratch)
             i32 i = randrange(&rng, 0, l+1);
             for (; !inputlines[i].repeats; i++) {}
             affirm(i <= l);
-            Inputline *inputline = &inputlines[i];
             plt.input = concat(&a, plt.input, inputlines[i].line);
             inputlines[i].repeats--;
             l += i == l;
@@ -943,8 +942,8 @@ int main(int argc, char **argv)
     iz    cap = (iz)1<<24; // Initial memory 16MiB
     byte *mem = mmap(0, cap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
     if (mem == MAP_FAILED) {
-        Str msg = S("uuniq: not enough memory");
-        plt_write(&plt, 2, msg.data, msg.len);
+        static const u8 msg[] = "uuniq: not enough memory\n";
+        plt_write(&plt, 2, (u8*)msg, countof(msg));
         plt_exit(&plt, STATUS_OOM);
     }
     return uuniq(argc, (u8 **)argv, &plt, mem, cap);

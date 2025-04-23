@@ -4,7 +4,8 @@
 
 CC     = cc
 COPT_FLAGS = -O2 -funroll-loops
-CFLAGS = -W -Wno-c23-extensions
+CFLAGS = -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter \
+         -Wno-unused-function -Wno-sign-conversion -Wno-c23-extensions
 LDLIBS =
 BINS   = uuniq uuniq_test uuniq_randtest uuniq_bench
 
