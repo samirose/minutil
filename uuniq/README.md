@@ -21,7 +21,6 @@ $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Refine benchmark input to contain duplicated lines to be more representative of actual use
 - Add fuzz testing
 - Add input and output file arguments
 - Add Linux x86 CRT-free platform
