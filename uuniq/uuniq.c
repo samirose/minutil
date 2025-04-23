@@ -270,7 +270,7 @@ typedef struct Strset Strset;
 struct Strset {
     Strset *child[4];
     Str str;
-    i64 count;
+    iz count;
 };
 
 static u64 hash64(Str s)
@@ -283,7 +283,7 @@ static u64 hash64(Str s)
     return h;
 }
 
-static i64 upsert(Strset **set, Str str, b32 clonestr, Arena *a)
+static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
 {
     for (uint64_t h = hash64(str); *set; h <<= 2) {
         if (equals(str, (*set)->str)) {
