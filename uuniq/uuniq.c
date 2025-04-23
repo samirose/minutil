@@ -866,6 +866,7 @@ int main(void)
     memset(mem, 0xa5, cap);  // pre-commit whole arena
 
     puts("uuniq: BENCH");
+    printf("sizeof(Strset): %zu bytes\n", sizeof(Strset));
 
     {
         u64 rng = 1;
