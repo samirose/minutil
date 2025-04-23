@@ -34,3 +34,4 @@ uuniq_bench: uuniq.c
 
 clean:
 	rm -f $(BINS)
+	rm -rf $$(printf "%s.dSYM " $(BINS))
