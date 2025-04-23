@@ -21,8 +21,11 @@ $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Add fuzz testing
 - Add input and output file arguments
+- Add integration tests using shell scripts
+- Add dynamic allocation of more memory when the initial arena gets full
+  - How to not consume all the memory on the system and make it unstable?
+- Add fuzz testing
 - Add Linux x86 CRT-free platform
 - Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
 - Maybe add Linux aarch64 CRT-free platform
