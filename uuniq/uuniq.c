@@ -30,11 +30,19 @@ typedef struct Arena Arena;
 
 // Platform abstraction
 typedef struct Plt Plt;
+
+typedef struct {
+    byte *beg;
+    iz    cap;
+} Mem;
+// Allocate platform-defined amount of memory
+static Mem plt_alloc(Plt *plt);
+
 //static b32  plt_open(Plt *, i32 fd, u8 *, b32 trunc, Arena *);  // open(2)
 static i32  plt_read(Plt *, u8 *, i32);                         // read(2)
 static b32  plt_write(Plt *, i32 fd, u8 *, i32);                // write(2)
 static void plt_exit(Plt *, i32);                               // _exit(2)
-static i32  uuniq(i32, u8 **, Plt *, byte *, iz);               // main
+static i32  uuniq(i32, u8 **, Plt *, Mem);                      // main
 
 // Application
 
@@ -60,6 +68,7 @@ typedef struct Output Output;
 static void print(Output *, Str);
 static void printu8(Output *, u8);
 static void printi64(Output *, i64);
+static void printu64hex(Output *b, u64 x);
 static void printq(Output *, Str);
 static void flush(Output *);
 
@@ -67,6 +76,7 @@ typedef struct {
     Plt    *plt;
     Output *be;
     b32     traceio;
+    b32     tracemem;
 } Uuniq;
 
 // Main program
@@ -91,20 +101,29 @@ static Arena newarena(Uuniq *ctx, byte *mem, iz cap) {
     return (Arena){ctx, mem, mem+cap};
 }
 
-static void oom(Uuniq *ctx)
+static void oom(Arena *a)
 {
-    if (ctx && ctx->be) {
-        print(ctx->be, S("uuniq: out of memory\n"));
-        flush(ctx->be);
+    Mem mem = plt_alloc(a->ctx->plt);
+    a->beg = mem.beg;
+    a->end = mem.beg + mem.cap;
+
+    if (!a->ctx->tracemem) {
+        return;
     }
-    plt_exit(ctx->plt, STATUS_OOM);
+    Output *be = a->ctx->be;
+    print(be, S("alloc() = "));
+    printu64hex(be, (uz)mem.beg);
+    print(be, S(":"));
+    printu64hex(be, (uz)mem.beg+mem.cap);
+    print(be, S("\n"));
+    flush(be);
 }
 
 static void *alloc(Arena *a, iz count, iz size, iz align)
 {
     iz pad = -(uz)a->beg & (align - 1);
     if (count >= (a->end - a->beg - pad)/size) {
-        oom(a->ctx);
+        oom(a);
     }
     byte *r = a->beg + pad;
     a->beg += pad + count*size;
@@ -337,6 +356,17 @@ static void printi64(Output *b, i64 x)
     print(b, span(beg, end));
 }
 
+static void printu64hex(Output *b, u64 x)
+{
+    u8 hex[16];
+    for (i32 i = 0; i < 8; i++) {
+        u8 v = (u8)(x >> (56 - i*8));
+        hex[2*i+0] = lohex[v>>4];
+        hex[2*i+1] = lohex[v&15];
+    }
+    output(b, hex, 16);
+}
+
 static void printq(Output *b, Str s)
 {
     b32 pending_null = 0;
@@ -437,10 +467,10 @@ static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     return r;
 }
 
-static i32 uuniq(i32 argc, u8 **argv, Plt *plt, byte *mem, iz cap)
+static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
 {
     // Bootstrap a context
-    Arena a  = newarena(0, mem, cap);
+    Arena a  = newarena(0, mem.beg, mem.cap);
     Uuniq *ctx = a.ctx = new(&a, 1, Uuniq);  // cannot fail (always fits)
     ctx->plt = plt;
 
@@ -475,6 +505,10 @@ struct Plt {
     i32      status;
     jmp_buf *oom;  // pointer hides ugly GDB printout
 };
+
+static Mem plt_alloc(Plt *) {
+    affirm(0);
+}
 
 static b32 plt_open(Plt *plt, i32 fd, u8 */*path*/, b32 trunc, Arena *)
 {
@@ -548,7 +582,7 @@ static Plt *newtestplt(Arena *a, iz cap)
         if (!(plt->status = setjmp(*plt->oom))) { \
             char *argv[] = {"uuniq", __VA_ARGS__, 0}; \
             i32 argc = countof(argv) - 1; \
-            plt->status = uuniq(argc, (u8 **)argv, plt, a.beg, a.end-a.beg); \
+            plt->status = uuniq(argc, (u8 **)argv, plt, (Mem){a.beg, a.end-a.beg}); \
         } \
         affirm(r == plt->status); \
         affirm(r!=STATUS_OK || equals(plt->output, s)); \
@@ -733,6 +767,10 @@ struct Plt {
     i32 cap;
 };
 
+static Mem plt_alloc(Plt *) {
+    affirm(0);
+}
+
 //static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
 static void plt_exit(Plt *, i32) { affirm(0); }
 
@@ -841,7 +879,7 @@ static void test_random(Arena scratch)
 
         char *argv[] = {"uuniq", 0};
         i32 argc = countof(argv) - 1;
-        i32 status = uuniq(argc, (u8 **)argv, &plt, a.beg, a.end-a.beg);
+        i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){a.beg, a.end-a.beg});
 
         affirm(status == STATUS_OK);
         affirm(equals(plt.output, expectedoutput));
@@ -884,6 +922,10 @@ static i64 perf_counter(void)
     #else
         #error("BENCH: Unsupported platform")
     #endif
+}
+
+static Mem plt_alloc(Plt *) {
+    affirm(0);
 }
 
 //static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
@@ -952,7 +994,7 @@ static void runbench(char *cmd, Plt *plt, Arena a) {
     for (i32 n = 0; n < 1<<9; n++) {
         plt->inpos = 0;
         i64 total = -perf_counter();
-        i32 r = uuniq(0, 0, plt, a.beg, a.end-a.beg);
+        i32 r = uuniq(0, 0, plt, (Mem){a.beg, a.end-a.beg});
         affirm(r == STATUS_OK);
         total += perf_counter();
         best = total<best ? total : best;
@@ -1014,6 +1056,20 @@ struct Plt {
     int fds[3];
 };
 
+static iz allocsz = 1<<26; // 64MiB
+
+static Mem plt_alloc(Plt *plt) {
+    Mem r = {0};
+    r.beg = mmap(0, allocsz, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    if (r.beg == MAP_FAILED) {
+        static const u8 msg[] = "uuniq: not enough memory\n";
+        plt_write(plt, 2, (u8*)msg, countof(msg));
+        plt_exit(plt, STATUS_OOM);
+    }
+    r.cap = allocsz;
+    return r;
+}
+
 /*
 static b32 plt_open(Plt *plt, i32 fd, u8 *path, b32 trunc, Arena *a)
 {
@@ -1041,15 +1097,9 @@ static void plt_exit(Plt *, i32 r)
 
 int main(int argc, char **argv)
 {
-    Plt   plt = {{0, 1, 2}};
-    iz    cap = (iz)1<<24; // Initial memory 16MiB
-    byte *mem = mmap(0, cap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
-    if (mem == MAP_FAILED) {
-        static const u8 msg[] = "uuniq: not enough memory\n";
-        plt_write(&plt, 2, (u8*)msg, countof(msg));
-        plt_exit(&plt, STATUS_OOM);
-    }
-    return uuniq(argc, (u8 **)argv, &plt, mem, cap);
+    Plt plt = {{0, 1, 2}};
+    Mem mem = plt_alloc(&plt);
+    return uuniq(argc, (u8 **)argv, &plt, mem);
 }
 
 #endif
