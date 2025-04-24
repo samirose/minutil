@@ -21,11 +21,15 @@ $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Add input and output file arguments
+- Tune raw memory allocation (plt_alloc) to fail before all system memory is consumed
+  - One possible strategy is to double the allocation size on every new alloc to fail earlier and leave breathing room for the system?
+- Add input and output file command line parameters
+- Add command line flags for activating the I/O and memory tracing
 - Add integration tests using shell scripts
-- Add dynamic allocation of more memory when the initial arena gets full
-  - How to not consume all the memory on the system and make it unstable?
 - Add fuzz testing
+- More optimisation ideas:
+  - Add NOZERO flag to arena alloc and use it when all allocated memory is immediately written to (e.g string copy)
+  - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP.
 - Add Linux x86 CRT-free platform
 - Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
 - Maybe add Linux aarch64 CRT-free platform
