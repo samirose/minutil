@@ -59,11 +59,14 @@ typedef struct {
 typedef struct Output Output;
 static void print(Output *, Str);
 static void printu8(Output *, u8);
+static void printi64(Output *, i64);
+static void printq(Output *, Str);
 static void flush(Output *);
 
 typedef struct {
     Plt    *plt;
     Output *be;
+    b32     traceio;
 } Uuniq;
 
 // Main program
@@ -75,6 +78,8 @@ enum {
     STATUS_OUTPUT   = 3,
     STATUS_OOM      = 6,
 };
+
+static u8 lohex[16] = "0123456789abcdef";
 
 struct Arena {
     Uuniq  *ctx;
@@ -119,6 +124,14 @@ static b32 equals(Str a, Str b)
     return 1;
 }
 
+static Str span(u8 *beg, u8 *end)
+{
+    Str r = {0};
+    r.data = beg;
+    r.len  = end - beg;
+    return r;
+}
+
 static Str clone(Arena *a, Str s)
 {
     Str r = s;
@@ -149,18 +162,34 @@ static Strpair extend(Arena *a, Str head, iz len)
 }
 
 typedef struct {
-    Plt *plt;
-    i32  len;
-    i32  off;
-    b32  eof;
-    b32  err;
-    u8   buf[1<<12];
+    Uuniq *ctx;
+    i32    len;
+    i32    off;
+    b32    eof;
+    b32    err;
+    u8     buf[1<<12];
 } Input;
 
-static Input *newinput(Arena *a, Plt *plt)
+static i32 uuniq_read(Uuniq *ctx, u8 *buf, i32 len) {
+    i32 r = plt_read(ctx->plt, buf, len);
+    if (!ctx->traceio) {
+        return r;
+    }
+
+    Output *be = ctx->be;
+    print(be, S("read(0, ..., "));
+    printi64(be, len);
+    print(be, S(") = "));
+    printi64(be, r);
+    print(be, S("\n"));
+    flush(be);
+    return r;
+}
+
+static Input *newinput(Arena *a, Uuniq *ctx)
 {
     Input *b = new(a, 1, Input);
-    b->plt = plt;
+    b->ctx = ctx;
     return b;
 }
 
@@ -169,7 +198,7 @@ static void refill(Input *b)
     affirm(b->off == b->len);
     if (!b->eof) {
         b->len = b->off = 0;
-        i32 r = plt_read(b->plt, b->buf, countof(b->buf));
+        i32 r = uuniq_read(b->ctx, b->buf, countof(b->buf));
         if (r < 0) {
             r = 0;
             b->err = 1;
@@ -219,25 +248,52 @@ static Inputline nextline(Input *b, Arena *a)
 }
 
 struct Output {
-    Plt *plt;
-    i32  len;
-    i32  fd;
-    b32  err;
-    u8   buf[1<<12];
+    Uuniq *ctx;
+    i32    len;
+    i32    fd;
+    b32    err;
+    u8     buf[1<<12];
 };
 
-static Output *newoutput(Arena *a, i32 fd, Plt *plt)
+static Output *newoutput(Arena *a, i32 fd, Uuniq *ctx)
 {
     Output *b = new(a, 1, Output);
     b->fd = fd;
-    b->plt = plt;
+    b->ctx = ctx;
     return b;
+}
+
+static b32 xxd_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
+{
+    b32 r = plt_write(ctx->plt, fd, buf, len);
+    if (!ctx->traceio || fd==2) {
+        return r;
+    }
+
+    Output *be = ctx->be;
+    print(be, S("write("));
+    printi64(be, fd);
+    print(be, S(", \""));
+    if (len > 12) {
+        printq(be, (Str){buf, 6});
+        print(be, S("..."));
+        printq(be, (Str){buf+len-6, 6});
+    } else {
+        printq(be, (Str){buf, len});
+    }
+    print(be, S("\", "));
+    printi64(be, len);
+    print(be, S(") = "));
+    printi64(be, r ? len : -1);
+    print(be, S("\n"));
+    flush(be);
+    return r;
 }
 
 static void flush(Output *b)
 {
     if (!b->err && b->len) {
-        b->err = !plt_write(b->plt, b->fd, b->buf, b->len);
+        b->err = !xxd_write(b->ctx, b->fd, b->buf, b->len);
         b->len = 0;
     }
 }
@@ -264,6 +320,53 @@ static void print(Output *b, Str s)
 static void printu8(Output *b, u8 c)
 {
     output(b, &c, 1);
+}
+
+static void printi64(Output *b, i64 x)
+{
+    u8  buf[32];
+    u8 *end = buf + countof(buf);
+    u8 *beg = end;
+    i64 t   = x<0 ? x : -x;
+    do {
+        *--beg = '0' - (u8)(t%10);
+    } while (t /= 10);
+    if (x < 0) {
+        *--beg = '-';
+    }
+    print(b, span(beg, end));
+}
+
+static void printq(Output *b, Str s)
+{
+    b32 pending_null = 0;
+    for (iz i = 0; i < s.len; i++) {
+        u8 c = s.data[i];
+        if (pending_null) {
+            Str null = c<'0'||c>'7' ? S("\\0") : S("\\x00");
+            print(b, null);
+            pending_null = 0;
+        }
+        switch (c) {
+        case '\0': pending_null = 1;    break;
+        case '\t': print(b, S("\\t"));  break;
+        case '\n': print(b, S("\\n"));  break;
+        case '\r': print(b, S("\\r"));  break;
+        case '\"': print(b, S("\\\"")); break;
+        case '\\': print(b, S("\\\\")); break;
+        default:
+            if (c<' ' || c >=127) {
+                print(b, S("\\x"));
+                printu8(b, lohex[c>>4]);
+                printu8(b, lohex[c&15]);
+            } else {
+                printu8(b, c);
+            }
+        }
+    }
+    if (pending_null) {
+        print(b, S("\\0"));
+    }
 }
 
 typedef struct Strset Strset;
@@ -302,11 +405,10 @@ static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
 
 static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     i32 r = STATUS_OK;
-    Plt *plt = ctx->plt;
-    Input *bi = newinput(&a, plt);
+    Input *bi = newinput(&a, ctx);
     Strset *lineset = 0;
-    Output *bo = newoutput(&a, 1, plt);
-    Output *be = newoutput(&a, 2, plt);
+    Output *bo = newoutput(&a, 1, ctx);
+    Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
     for (;;) {
