@@ -112,9 +112,9 @@ static void oom(Arena *a)
     }
     Output *be = a->ctx->be;
     print(be, S("alloc() = "));
-    printu64hex(be, (uz)mem.beg);
+    printu64hex(be, (uintptr_t)mem.beg);
     print(be, S(":"));
-    printu64hex(be, (uz)mem.beg+mem.cap);
+    printu64hex(be, (uintptr_t)mem.beg+mem.cap);
     print(be, S("\n"));
     flush(be);
 }
