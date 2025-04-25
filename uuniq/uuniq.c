@@ -282,7 +282,7 @@ static Output *newoutput(Arena *a, i32 fd, Uuniq *ctx)
     return b;
 }
 
-static b32 xxd_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
+static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
 {
     b32 r = plt_write(ctx->plt, fd, buf, len);
     if (!ctx->traceio || fd==2) {
@@ -312,7 +312,7 @@ static b32 xxd_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
 static void flush(Output *b)
 {
     if (!b->err && b->len) {
-        b->err = !xxd_write(b->ctx, b->fd, b->buf, b->len);
+        b->err = !uuniq_write(b->ctx, b->fd, b->buf, b->len);
         b->len = 0;
     }
 }
