@@ -35,9 +35,8 @@ typedef struct {
     byte *beg;
     iz    cap;
 } Mem;
-// Allocate platform-defined amount of memory
-static Mem plt_alloc(Plt *plt);
 
+static Mem plt_alloc(Plt *plt);                                 // mmap(2)
 //static b32  plt_open(Plt *, i32 fd, u8 *, b32 trunc, Arena *);  // open(2)
 static i32  plt_read(Plt *, u8 *, i32);                         // read(2)
 static b32  plt_write(Plt *, i32 fd, u8 *, i32);                // write(2)
@@ -77,6 +76,7 @@ typedef struct {
     Output *be;
     b32     traceio;
     b32     tracemem;
+    iz      totalmem;
 } Uuniq;
 
 // Main program
@@ -103,18 +103,22 @@ static Arena newarena(Uuniq *ctx, byte *mem, iz cap) {
 
 static void oom(Arena *a)
 {
-    Mem mem = plt_alloc(a->ctx->plt);
+    Uuniq *ctx = a->ctx;
+    Mem mem = plt_alloc(ctx->plt);
     a->beg = mem.beg;
     a->end = mem.beg + mem.cap;
+    ctx->totalmem += mem.cap;
 
-    if (!a->ctx->tracemem) {
+    if (!ctx->tracemem) {
         return;
     }
-    Output *be = a->ctx->be;
+    Output *be = ctx->be;
     print(be, S("alloc() = "));
     printu64hex(be, (uintptr_t)mem.beg);
     print(be, S(":"));
     printu64hex(be, (uintptr_t)mem.beg+mem.cap);
+    print(be, S(" total = "));
+    printu64hex(be, ctx->totalmem);
     print(be, S("\n"));
     flush(be);
 }
@@ -464,6 +468,13 @@ static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
         r = STATUS_INPUT;
     }
     flush(be);
+
+    if (ctx->tracemem) {
+        print(be, S("total alloc = "));
+        printu64hex(be, ctx->totalmem);
+        print(be, S("\n"));
+        flush(be);
+    }
     return r;
 }
 
@@ -473,6 +484,8 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
     Arena a  = newarena(0, mem.beg, mem.cap);
     Uuniq *ctx = a.ctx = new(&a, 1, Uuniq);  // cannot fail (always fits)
     ctx->plt = plt;
+    ctx->totalmem = mem.cap;
+    ctx->tracemem = 1;
 
     i32 r = uuniq_(argc, argv, ctx, a);
     return r;
@@ -1056,7 +1069,7 @@ struct Plt {
     int fds[3];
 };
 
-static iz allocsz = 1<<26; // 64MiB
+static iz allocsz = 1<<24; // Initially 16MiB
 
 static Mem plt_alloc(Plt *plt) {
     Mem r = {0};
@@ -1067,6 +1080,7 @@ static Mem plt_alloc(Plt *plt) {
         plt_exit(plt, STATUS_OOM);
     }
     r.cap = allocsz;
+    allocsz *= 2;
     return r;
 }
 
