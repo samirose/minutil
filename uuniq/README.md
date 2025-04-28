@@ -21,10 +21,6 @@ $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Tune raw memory allocation (plt_alloc) to fail before all system memory is consumed
-  - One possible strategy is to double the allocation size on every new alloc to fail earlier and leave breathing room for the system?
-- Add input and output file command line parameters
-- Add command line flags for activating the I/O and memory tracing
 - Add integration tests using shell scripts
 - Add fuzz testing
 - More optimisation ideas:

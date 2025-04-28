@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-04-16"
+#define VERSION "2025-04-28"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
@@ -36,12 +36,12 @@ typedef struct {
     iz    cap;
 } Mem;
 
-static Mem plt_alloc(Plt *plt);                                 // mmap(2)
-//static b32  plt_open(Plt *, i32 fd, u8 *, b32 trunc, Arena *);  // open(2)
-static i32  plt_read(Plt *, u8 *, i32);                         // read(2)
-static b32  plt_write(Plt *, i32 fd, u8 *, i32);                // write(2)
-static void plt_exit(Plt *, i32);                               // _exit(2)
-static i32  uuniq(i32, u8 **, Plt *, Mem);                      // main
+static Mem plt_alloc(Plt *);                           // mmap(2)
+static b32  plt_open(Plt *, i32, u8 *, b32, Arena *);  // open(2)
+static i32  plt_read(Plt *, u8 *, i32);                // read(2)
+static b32  plt_write(Plt *, i32 fd, u8 *, i32);       // write(2)
+static void plt_exit(Plt *, i32);                      // _exit(2)
+static i32  uuniq(i32, u8 **, Plt *, Mem);             // main
 
 // Application
 
@@ -134,6 +134,22 @@ static void *alloc(Arena *a, iz count, iz size, iz align)
     return mset(r, 0, count*size);
 }
 
+static Str import(u8 *s)
+{
+    Str r = {0};
+    r.data = s;
+    for (; r.data[r.len]; r.len++) {}
+    return r;
+}
+
+static Str span(u8 *beg, u8 *end)
+{
+    Str r = {0};
+    r.data = beg;
+    r.len  = end - beg;
+    return r;
+}
+
 static b32 equals(Str a, Str b)
 {
     if (a.len != b.len) {
@@ -145,14 +161,6 @@ static b32 equals(Str a, Str b)
         }
     }
     return 1;
-}
-
-static Str span(u8 *beg, u8 *end)
-{
-    Str r = {0};
-    r.data = beg;
-    r.len  = end - beg;
-    return r;
 }
 
 static Str clone(Arena *a, Str s)
@@ -193,6 +201,37 @@ typedef struct {
     u8     buf[1<<12];
 } Input;
 
+static b32 uuniq_open(Uuniq *ctx, i32 fd, u8 *path, b32 trunc, Arena *a) {
+    b32 r = plt_open(ctx->plt, fd, path, trunc, a);
+    if (!ctx->traceio) {
+        return r;
+    }
+
+    Output *be = ctx->be;
+    print(be, S("open(\""));
+    printq(be, import(path));
+    print(be, S("\", "));
+
+    if (fd == 0) {
+        print(be, S("O_RDONLY"));
+    } else {
+        print(be, S("O_CREAT|O_WRONLY"));
+    }
+    if (trunc) {
+        print(be, S("|O_TRUNC"));
+    }
+    if (fd != 0) {
+        print(be, S(", 0666"));
+    }
+
+    print(be, S(") = "));
+    printi64(be, r ? fd : -1);
+
+    print(be, S("\n"));
+    flush(be);
+    return r;
+}
+
 static i32 uuniq_read(Uuniq *ctx, u8 *buf, i32 len) {
     i32 r = plt_read(ctx->plt, buf, len);
     if (!ctx->traceio) {
@@ -204,6 +243,33 @@ static i32 uuniq_read(Uuniq *ctx, u8 *buf, i32 len) {
     printi64(be, len);
     print(be, S(") = "));
     printi64(be, r);
+    print(be, S("\n"));
+    flush(be);
+    return r;
+}
+
+static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
+{
+    b32 r = plt_write(ctx->plt, fd, buf, len);
+    if (!ctx->traceio || fd==2) {
+        return r;
+    }
+
+    Output *be = ctx->be;
+    print(be, S("write("));
+    printi64(be, fd);
+    print(be, S(", \""));
+    if (len > 12) {
+        printq(be, (Str){buf, 6});
+        print(be, S("..."));
+        printq(be, (Str){buf+len-6, 6});
+    } else {
+        printq(be, (Str){buf, len});
+    }
+    print(be, S("\", "));
+    printi64(be, len);
+    print(be, S(") = "));
+    printi64(be, r ? len : -1);
     print(be, S("\n"));
     flush(be);
     return r;
@@ -284,33 +350,6 @@ static Output *newoutput(Arena *a, i32 fd, Uuniq *ctx)
     b->fd = fd;
     b->ctx = ctx;
     return b;
-}
-
-static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
-{
-    b32 r = plt_write(ctx->plt, fd, buf, len);
-    if (!ctx->traceio || fd==2) {
-        return r;
-    }
-
-    Output *be = ctx->be;
-    print(be, S("write("));
-    printi64(be, fd);
-    print(be, S(", \""));
-    if (len > 12) {
-        printq(be, (Str){buf, 6});
-        print(be, S("..."));
-        printq(be, (Str){buf+len-6, 6});
-    } else {
-        printq(be, (Str){buf, len});
-    }
-    print(be, S("\", "));
-    printi64(be, len);
-    print(be, S(") = "));
-    printi64(be, r ? len : -1);
-    print(be, S("\n"));
-    flush(be);
-    return r;
 }
 
 static void flush(Output *b)
@@ -437,7 +476,18 @@ static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
     return (*set)->count = 1;
 }
 
-static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
+static void usage(Output *b)
+{
+    static u8 usage_text[] =
+    "usage: uuniq [options] [INPATH [OUTPATH]]\n"
+    "  -h            print this message\n"
+    "  -v            display version information\n"
+    "  -x[i][m]      strace-like log on standard error\n"
+    "                -xi for I/O only, -xm for memory allocations only.\n";
+    print(b, S(usage_text));
+}
+
+static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     i32 r = STATUS_OK;
     Input *bi = newinput(&a, ctx);
     Strset *lineset = 0;
@@ -445,6 +495,89 @@ static i32 uuniq_(i32 /*argc*/, u8 **/*argv*/, Uuniq *ctx, Arena a) {
     Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
+    i32 argi = 1, done = 0;
+    for (; argi < argc; argi++) {
+        u8 *arg = argv[argi];
+        if (arg[0] != '-') {
+            break;
+        }
+
+        switch (arg[1]) {
+
+        case '\0':  // "-" standard input
+            done = 1;
+            break;
+
+        case 'h':
+            usage(bo);
+            flush(bo);
+            return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+        case 'v':
+            print(bo, S("uuniq " VERSION "\n"));
+            flush(bo);
+            return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+        case 'x':
+            ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
+            ctx->tracemem = !arg[2] || (arg[2] == 'm' && !arg[3]);
+            if (ctx->traceio || ctx->tracemem) {
+                break;
+            }
+            // fallthrough
+
+        default:
+            print(be, S("uuniq: unknown option "));
+            print(be, import(arg));
+            print(be, S("\n"));
+            usage(be);
+            flush(be);
+            return STATUS_CMD;
+        }
+
+        if (done) break;  // without incrementing argi
+    }
+
+    Str inpath = {0};
+    Str outpath = {0};
+    switch (argc - argi) {
+        case  2:
+            outpath = import(argv[argi+1]);
+            // fallthrough
+        case  1:
+            inpath = import(argv[argi+0]);
+            break;
+        case  0:
+        case -1:
+            break;
+        default:
+            print(be, S("uuniq: too many arguments\n"));
+            usage(be);
+            flush(be);
+            return STATUS_CMD;
+        }
+
+    if (inpath.data && !equals(inpath, S("-"))) {
+        if (!uuniq_open(ctx, 0, inpath.data, 0, &a)) {
+            print(be, S("uuniq: error opening input file: "));
+            print(be, inpath);
+            print(be, S("\n"));
+            flush(be);
+            return STATUS_INPUT;
+        }
+    }
+
+    if (outpath.data && !equals(outpath, S("-"))) {
+        if (!uuniq_open(ctx, 1, outpath.data, 1, &a)) {
+            print(be, S("uuniq: error opening output file: "));
+            print(be, outpath);
+            print(be, S("\n"));
+            flush(be);
+            return STATUS_INPUT;
+        }
+    }
+
+    // Main loop
     for (;;) {
         // Read the next string to a copy of arena
         Arena m = a;
@@ -485,7 +618,6 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
     Uuniq *ctx = a.ctx = new(&a, 1, Uuniq);  // cannot fail (always fits)
     ctx->plt = plt;
     ctx->totalmem = mem.cap;
-    ctx->tracemem = 1;
 
     i32 r = uuniq_(argc, argv, ctx, a);
     return r;
@@ -784,7 +916,7 @@ static Mem plt_alloc(Plt *) {
     affirm(0);
 }
 
-//static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
+static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
 static void plt_exit(Plt *, i32) { affirm(0); }
 
 static i32  plt_read(Plt *plt, u8 *buf, i32 len)
@@ -941,7 +1073,7 @@ static Mem plt_alloc(Plt *) {
     affirm(0);
 }
 
-//static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
+static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
 static void plt_exit(Plt *, i32) { affirm(0); }
 
 static i32 plt_read(Plt *plt, u8 *buf, i32 len)
@@ -1084,7 +1216,6 @@ static Mem plt_alloc(Plt *plt) {
     return r;
 }
 
-/*
 static b32 plt_open(Plt *plt, i32 fd, u8 *path, b32 trunc, Arena *a)
 {
     int mode = fd==0 ? O_RDONLY : O_CREAT|O_WRONLY;
@@ -1092,7 +1223,6 @@ static b32 plt_open(Plt *plt, i32 fd, u8 *path, b32 trunc, Arena *a)
     plt->fds[fd] = open((char *)path, mode, 0666);
     return plt->fds[fd] != -1;
 }
-*/
 
 static i32 plt_read(Plt *plt, u8 *buf, i32 len)
 {
