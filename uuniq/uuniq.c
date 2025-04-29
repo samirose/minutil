@@ -105,8 +105,7 @@ static void oom(Arena *a)
 {
     Uuniq *ctx = a->ctx;
     Mem mem = plt_alloc(ctx->plt);
-    a->beg = mem.beg;
-    a->end = mem.beg + mem.cap;
+    *a = newarena(ctx, mem.beg, mem.cap);
     ctx->totalmem += mem.cap;
 
     if (!ctx->tracemem) {
