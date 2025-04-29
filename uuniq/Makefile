@@ -29,10 +29,10 @@ uuniq_test: uuniq.c
 	$(CC) -DTEST $(CDBGFLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 uuniq_randtest: uuniq.c
-	$(CC) -DRANDTEST $(CDBGFLAGS) $(COPT_FLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) -DRANDTEST $(CDBGFLAGS) $(COPTFLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 uuniq_bench: uuniq.c
-	$(CC) -DBENCH $(COPT_FLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) -DBENCH $(COPTFLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 clean:
 	rm -f $(BINS)
