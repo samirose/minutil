@@ -47,7 +47,11 @@ static i32  uuniq(i32, u8 **, Plt *, Mem);             // main
 
 #define countof(a)      (iz)(sizeof(a) / sizeof(*(a)))
 #define affirm(c)       while (!(c)) __builtin_unreachable()
-#define new(a, n, t)    (t *)alloc(a, n, sizeof(t), _Alignof(t))
+#define new(...)            newx(__VA_ARGS__,new4,new3,new2)(__VA_ARGS__)
+#define newx(a,b,c,d,e,...) e
+#define new2(a, t)          (t *)alloc(a, sizeof(t), _Alignof(t), 1, 0)
+#define new3(a, t, n)       (t *)alloc(a, sizeof(t), _Alignof(t), n, 0)
+#define new4(a, t, n, f)    (t *)alloc(a, sizeof(t), _Alignof(t), n, f)
 #define S(s)            (Str){(u8 *)s, sizeof(s)-1}
 #define maxof(t)        ((t)-1<1 ? (((t)1<<(sizeof(t)*8-2))-1)*2+1 : (t)-1)
 #define mset(d, c, n)   __builtin_memset(d, c, n)
@@ -122,7 +126,11 @@ static void oom(Arena *a)
     flush(be);
 }
 
-static void *alloc(Arena *a, iz count, iz size, iz align)
+enum {
+    NOZERO = 1
+};
+
+static void *alloc(Arena *a, iz size, iz align, iz count, u8 flags)
 {
     iz pad = -(uz)a->beg & (align - 1);
     if (count >= (a->end - a->beg - pad)/size) {
@@ -130,7 +138,7 @@ static void *alloc(Arena *a, iz count, iz size, iz align)
     }
     byte *r = a->beg + pad;
     a->beg += pad + count*size;
-    return mset(r, 0, count*size);
+    return flags & NOZERO ? r : mset(r, 0, count*size);
 }
 
 static Str import(u8 *s)
@@ -165,7 +173,7 @@ static b32 equals(Str a, Str b)
 static Str clone(Arena *a, Str s)
 {
     Str r = s;
-    r.data = new(a, r.len, u8);
+    r.data = new(a, u8, r.len, NOZERO);
     if (r.len) mcpy(r.data, s.data, r.len);
     return r;
 }
@@ -185,7 +193,7 @@ static Strpair extend(Arena *a, Str head, iz len)
     if (!r.head.data || (byte *)(r.head.data+r.head.len) != a->beg) {
         r.head = clone(a, r.head);
     }
-    r.tail.data = new(a, len, u8);
+    r.tail.data = new(a, u8, len);
     r.tail.len = len;
     r.head.len += len;
     return r;
@@ -276,7 +284,7 @@ static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
 
 static Input *newinput(Arena *a, Uuniq *ctx)
 {
-    Input *b = new(a, 1, Input);
+    Input *b = new(a, Input);
     b->ctx = ctx;
     return b;
 }
@@ -345,7 +353,7 @@ struct Output {
 
 static Output *newoutput(Arena *a, i32 fd, Uuniq *ctx)
 {
-    Output *b = new(a, 1, Output);
+    Output *b = new(a, Output);
     b->fd = fd;
     b->ctx = ctx;
     return b;
@@ -470,7 +478,7 @@ static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
     if (clonestr) {
         str = clone(a, str);
     }
-    *set = new(a, 1, Strset);
+    *set = new(a, Strset);
     (*set)->str = str;
     return (*set)->count = 1;
 }
@@ -614,7 +622,7 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
 {
     // Bootstrap a context
     Arena a  = newarena(0, mem.beg, mem.cap);
-    Uuniq *ctx = a.ctx = new(&a, 1, Uuniq);  // cannot fail (always fits)
+    Uuniq *ctx = a.ctx = new(&a, Uuniq);  // cannot fail (always fits)
     ctx->plt = plt;
     ctx->totalmem = mem.cap;
 
@@ -714,9 +722,9 @@ static void plt_exit(Plt *plt, i32 r)
 
 static Plt *newtestplt(Arena *a, iz cap)
 {
-    Plt *plt = new(a, 1, Plt);
-    plt->oom = new(a, 1, jmp_buf);
-    plt->output.data = new(a, cap, u8);
+    Plt *plt = new(a, Plt);
+    plt->oom = new(a, jmp_buf);
+    plt->output.data = new(a, u8, cap);
     plt->cap = cap;
     return plt;
 }
@@ -817,7 +825,7 @@ static void test_longlines(Arena scratch)
     puts("TEST: uuniq long lines");
 
     Str longline = {0};
-    longline.data = new(&scratch, 1000, u8);
+    longline.data = new(&scratch, u8, 1000);
     longline.len = 1000;
     for (i32 i = 0; i < 1000; i++) {
         longline.data[i] = '0' + i % 10;
@@ -986,7 +994,7 @@ static void test_random(Arena scratch)
         Plt plt = {0};
         Arena a = scratch;
         i32 uniqlines = randrange(&rng, 0, maxuniqlines+1);
-        Inputline *inputlines = new(&a, uniqlines, Inputline);
+        Inputline *inputlines = new(&a, Inputline, uniqlines);
         Str expectedoutput = {0};
         for (i32 l = 0; l < uniqlines;) {
           i32 linelen = randrange(&rng, 0, 100) < 90
@@ -1019,7 +1027,7 @@ static void test_random(Arena scratch)
         }
 
         plt.cap = uniqlines * (reglinelen + longlinelen);
-        plt.output.data = new(&a, plt.cap, u8);
+        plt.output.data = new(&a, u8, plt.cap);
 
         char *argv[] = {"uuniq", 0};
         i32 argc = countof(argv) - 1;
@@ -1110,11 +1118,11 @@ static i32 randrange(u64 *rng, i32 lo, i32 hi)
 }
 
 static Str randomlines(Arena *a, u64 *rng, i32 n, i32 maxlen, i32 maxrepeats) {
-    Str *lines = new(a, n, Str);
+    Str *lines = new(a, Str, n);
     for (i32 i = 0; i < n; i++) {
         Str *line = &lines[i];
         line->len = randrange(rng, 1, maxlen + 1);
-        line->data = new(a, line->len, u8);
+        line->data = new(a, u8, line->len);
         for (i32 ci = 0; ci < line->len; ci++) {
             line->data[ci] = (u8)randrange(rng, 32, 126);
         }
@@ -1159,7 +1167,7 @@ int main(void)
     {
         u64 rng = 1;
         Arena tmp = a;
-        Plt  *plt = new(&tmp, 1, Plt);
+        Plt  *plt = new(&tmp, Plt);
         plt->input = randomlines(&tmp, &rng, 300, 30, 1000);
         runbench("short lines", plt, tmp);
     }
@@ -1167,7 +1175,7 @@ int main(void)
     {
         u64 rng = 2;
         Arena tmp = a;
-        Plt  *plt = new(&tmp, 1, Plt);
+        Plt  *plt = new(&tmp, Plt);
         plt->input = randomlines(&tmp, &rng, 30000, 30, 0);
         runbench("short lines - no repeats", plt, tmp);
     }
@@ -1175,7 +1183,7 @@ int main(void)
     {
         u64 rng = 3;
         Arena tmp = a;
-        Plt  *plt = new(&tmp, 1, Plt);
+        Plt  *plt = new(&tmp, Plt);
         plt->input = randomlines(&tmp, &rng, 60, 1000, 100);
         runbench("long lines", plt, tmp);
     }
@@ -1183,7 +1191,7 @@ int main(void)
     {
         u64 rng = 4;
         Arena tmp = a;
-        Plt  *plt = new(&tmp, 1, Plt);
+        Plt  *plt = new(&tmp, Plt);
         plt->input = randomlines(&tmp, &rng, 2500, 1000, 0);
         runbench("long lines - no repeats", plt, tmp);
     }
