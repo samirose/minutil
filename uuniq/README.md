@@ -24,9 +24,11 @@ For other targets, see `randtest` and `bench` in the Makefile.
 - Add integration tests using shell scripts
 - Add fuzz testing
 - More optimisation ideas:
-  - Add NOZERO flag to arena alloc and use it when all allocated memory is immediately written to (e.g string copy)
   - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP.
 - Add Linux x86 CRT-free platform
 - Implement suitable set of `uuniq` flags while retaining the immediate output nature of `uuniq`.
 - Maybe add Linux aarch64 CRT-free platform
 - Test 32bit big endian compatibility using QEMU, see https://nullprogram.com/blog/2021/08/21/.
+
+## Notes
+- Adding NOZERO flag to arena alloc and using it when all allocated memory is immediately written to (e.g string copy) had very small or indistinguishable effect on benchmark performance on Apple M1. Left the flag implementation and its use in place still.
