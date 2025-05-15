@@ -828,7 +828,7 @@ static void test_longlines(Arena scratch)
     longline.data = new(&scratch, u8, 1000);
     longline.len = 1000;
     for (i32 i = 0; i < 1000; i++) {
-        longline.data[i] = '0' + i % 10;
+        longline.data[i] = '0' + (u8)(i % 10);
     }
 
     {
