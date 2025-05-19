@@ -502,8 +502,8 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
-    i32 argi = 1, done = 0;
-    for (; argi < argc; argi++) {
+    i32 argi = 1;
+    for (i32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
         if (arg[0] != '-') {
             break;
