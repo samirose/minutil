@@ -502,6 +502,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
+    i32 dopt = 0;
     i32 argi = 1;
     for (i32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
@@ -524,6 +525,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             print(bo, S("uuniq " VERSION "\n"));
             flush(bo);
             return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+        case 'd':
+            dopt = 1;
+            break;
 
         case 'x':
             ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
@@ -594,6 +599,11 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         }
         if (upsert(&lineset, line.text, line.inbuf, &m) == 1) {
             a = m;  // Commit the line and set entry to arena
+            if (!dopt) {
+                print(bo, line.text);
+                printu8(bo, '\n');
+            }
+        } else if (dopt) {
             print(bo, line.text);
             printu8(bo, '\n');
         }
@@ -820,6 +830,86 @@ static void test_basic(Arena scratch)
     );
 }
 
+static void test_opt_d(Arena scratch)
+{
+    puts("TEST: uuniq -d [filename]");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("\n");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("\n\n");
+    expect(
+        STATUS_OK,
+        S("\n"),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\n");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nHello");
+    expect(
+        STATUS_OK,
+        S("Hello\n"),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nworld!!!");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("world!!!\nHello\nworld!!!\nHello");
+    expect(
+        STATUS_OK,
+        S("world!!!\nHello\n"),
+        "-d"
+    );
+}
+
 static void test_longlines(Arena scratch)
 {
     puts("TEST: uuniq long lines");
@@ -901,6 +991,7 @@ int main(void)
     byte *mem = malloc(cap);
     Arena a   = {0, mem, mem+cap};
     test_basic(a);
+    test_opt_d(a);
     test_longlines(a);
     puts("all tests passed");
 }
