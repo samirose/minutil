@@ -21,7 +21,7 @@ $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Implement suitable set of `uuniq` command-line flags while retaining the immediate output nature of `uuniq`.
+- Implement suitable set of `uniq` command-line flags while retaining the immediate output nature of `uuniq`.
 - Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
 - Add integration tests using shell scripts
 - Add fuzz testing
