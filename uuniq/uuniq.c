@@ -1057,6 +1057,7 @@ static void test_random(Arena scratch)
 
     typedef struct {
         i32 repeats;
+        i32 repeated;
         Str line;
     } Inputline;
 
@@ -1094,6 +1095,8 @@ static void test_random(Arena scratch)
             }
         }
 
+        Inputline **duplines = new(&a, Inputline*, uniqlines);
+        i32 nduplines = 0;
         Str input = {0};
         for (i32 l = 0; l < uniqlines;) {
             i32 i = randrange(&rng, 0, l+1);
@@ -1101,6 +1104,9 @@ static void test_random(Arena scratch)
             affirm(i <= l);
             input = concat(&a, input, inputlines[i].line);
             inputlines[i].repeats--;
+            if (inputlines[i].repeated++ == 1) {
+                duplines[nduplines++] = &inputlines[i];
+            }
             l += i == l;
         }
 
@@ -1117,6 +1123,26 @@ static void test_random(Arena scratch)
             }
 
             char *argv[] = {"uuniq", 0};
+            i32 argc = countof(argv) - 1;
+            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+
+            affirm(status == STATUS_OK);
+            affirm(equals(plt.output, expectedoutput));
+        }
+
+        {
+            Arena t = a;
+            Plt plt = {0};
+            plt.input = input;
+            plt.cap = maxoutsz;
+            plt.output.data = new(&t, u8, plt.cap);
+
+            Str expectedoutput = {0};
+            for (i32 i = 0; i < nduplines; i++) {
+                expectedoutput = concat(&t, expectedoutput, duplines[i]->line);
+            }
+
+            char *argv[] = {"uuniq", "-d", 0};
             i32 argc = countof(argv) - 1;
             i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
 
