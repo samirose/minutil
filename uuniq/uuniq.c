@@ -591,15 +591,14 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
     // Main loop
     for (;;) {
-        // Read the next string to a copy of arena
-        Arena m = a;
-        Inputline line = nextline(bi, &m);
+        Arena t = a;
+        Inputline line = nextline(bi, &t);
         if (!line.text.len && bi->eof) {
             break;
         }
-        switch (upsert(&lineset, line.text, line.inbuf, &m)) {
+        switch (upsert(&lineset, line.text, line.inbuf, &t)) {
         case 1:  // Initially seen line
-            a = m;  // Commit the line and set entry to arena
+            a = t; // Save the line
             if (!dopt) {
                 print(bo, line.text);
                 printu8(bo, '\n');
