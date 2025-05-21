@@ -597,15 +597,22 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         if (!line.text.len && bi->eof) {
             break;
         }
-        if (upsert(&lineset, line.text, line.inbuf, &m) == 1) {
+        switch (upsert(&lineset, line.text, line.inbuf, &m)) {
+        case 1:  // Initially seen line
             a = m;  // Commit the line and set entry to arena
             if (!dopt) {
                 print(bo, line.text);
                 printu8(bo, '\n');
             }
-        } else if (dopt) {
-            print(bo, line.text);
-            printu8(bo, '\n');
+            break;
+        case 2: // First detected duplicate line
+            if (dopt) {
+                print(bo, line.text);
+                printu8(bo, '\n');
+            }
+            break;
+        default:
+            break;
         }
     }
 
@@ -902,7 +909,7 @@ static void test_opt_d(Arena scratch)
 
     a   = scratch;
     plt = newtestplt(&a, 1<<12);
-    plt->input = S("world!!!\nHello\nworld!!!\nHello");
+    plt->input = S("world!!!\nHello\nworld!!!\nHello\nworld!!!");
     expect(
         STATUS_OK,
         S("world!!!\nHello\n"),
