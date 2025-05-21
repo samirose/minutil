@@ -62,11 +62,6 @@ typedef struct {
     iz  len;
 } Str;
 
-typedef struct {
-    Str head;
-    Str tail;
-} Strpair;
-
 typedef struct Output Output;
 static void print(Output *, Str);
 static void printu8(Output *, u8);
@@ -185,18 +180,6 @@ static Str concat(Arena *a, Str head, Str tail)
     }
     head.len += clone(a, tail).len;
     return head;
-}
-
-static Strpair extend(Arena *a, Str head, iz len)
-{
-    Strpair r = { head, {0} };
-    if (!r.head.data || (byte *)(r.head.data+r.head.len) != a->beg) {
-        r.head = clone(a, r.head);
-    }
-    r.tail.data = new(a, u8, len);
-    r.tail.len = len;
-    r.head.len += len;
-    return r;
 }
 
 typedef struct {
@@ -1083,55 +1066,63 @@ static void test_random(Arena scratch)
     i32 reglinelen = 60;
     i32 longlinelen = 5000;
 
+    Str linebuf = {0};
+    linebuf.data = new(&scratch, u8, longlinelen + 1);
+
     for (u64 r = 1;; r++) {
         if (!(r % 10000)) {
             printf("%llu\n", (long long)r);
         }
 
-        Plt plt = {0};
         Arena a = scratch;
         i32 uniqlines = randrange(&rng, 0, maxuniqlines+1);
+        i32 maxoutsz = uniqlines * (reglinelen + longlinelen);
         Inputline *inputlines = new(&a, Inputline, uniqlines);
-        Str expectedoutput = {0};
         for (i32 l = 0; l < uniqlines;) {
-          i32 linelen = randrange(&rng, 0, 100) < 90
-              ? randrange(&rng, 0, reglinelen+1)
-              : randrange(&rng, reglinelen+1, longlinelen+1);
-            // extend the expected output with a new random line in a temporary arena
-            Arena t = a;
-            Strpair ext = extend(&t, expectedoutput, linelen+1 /*for '\n'*/);
-            fill_randomchars(ext.tail, &rng);
-            ext.tail.data[linelen] = '\n';
+            linebuf.len = randrange(&rng, 0, 100) < 90
+                ? randrange(&rng, 0, reglinelen+1)
+                : randrange(&rng, reglinelen+1, longlinelen+1);
+            fill_randomchars(linebuf, &rng);
+            linebuf.data[linebuf.len++] = '\n';
             i32 i = 0;
-            for (; i < l && !equals(inputlines[i].line, ext.tail); i++) {}
+            for (; i < l && !equals(inputlines[i].line, linebuf); i++) {}
             if (i == l) {
                 // line was unique, save it and commit it to the expected output
-                inputlines[l].line = ext.tail;
+                inputlines[l].line = clone(&a, linebuf);
                 inputlines[l].repeats = randrange(&rng, 1, maxrepeatedlines+1);
-                expectedoutput = ext.head;
-                a = t;
                 l++;
             }
         }
 
+        Str input = {0};
         for (i32 l = 0; l < uniqlines;) {
             i32 i = randrange(&rng, 0, l+1);
             for (; !inputlines[i].repeats; i++) {}
             affirm(i <= l);
-            plt.input = concat(&a, plt.input, inputlines[i].line);
+            input = concat(&a, input, inputlines[i].line);
             inputlines[i].repeats--;
             l += i == l;
         }
 
-        plt.cap = uniqlines * (reglinelen + longlinelen);
-        plt.output.data = new(&a, u8, plt.cap);
+        {
+            Arena t = a;
+            Plt plt = {0};
+            plt.input = input;
+            plt.cap = maxoutsz;
+            plt.output.data = new(&t, u8, plt.cap);
 
-        char *argv[] = {"uuniq", 0};
-        i32 argc = countof(argv) - 1;
-        i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){a.beg, a.end-a.beg});
+            Str expectedoutput = {0};
+            for (i32 i = 0; i < uniqlines; i++) {
+                expectedoutput = concat(&t, expectedoutput, inputlines[i].line);
+            }
 
-        affirm(status == STATUS_OK);
-        affirm(equals(plt.output, expectedoutput));
+            char *argv[] = {"uuniq", 0};
+            i32 argc = countof(argv) - 1;
+            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+
+            affirm(status == STATUS_OK);
+            affirm(equals(plt.output, expectedoutput));
+        }
     }
 }
 
