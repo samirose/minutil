@@ -466,6 +466,11 @@ static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
     return (*set)->count = 1;
 }
 
+static void writeline(Output *bo, Str str) {
+    print(bo, str);
+    printu8(bo, '\n');
+}
+
 static void usage(Output *b)
 {
     static u8 usage_text[] =
@@ -582,16 +587,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         switch (upsert(&lineset, line.text, line.inbuf, &t)) {
         case 1:  // Initially seen line
             a = t; // Save the line
-            if (!dopt) {
-                print(bo, line.text);
-                printu8(bo, '\n');
-            }
+            if (!dopt) writeline(bo, line.text);
             break;
         case 2: // First detected duplicate line
-            if (dopt) {
-                print(bo, line.text);
-                printu8(bo, '\n');
-            }
+            if (dopt) writeline(bo, line.text);
             break;
         default:
             break;
