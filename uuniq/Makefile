@@ -1,6 +1,6 @@
 .POSIX:
 .SUFFIXES:
-.PHONY: all test randtest bench clean
+.PHONY: all test randtest inttest bench clean
 
 CC        = cc
 COPTFLAGS = -O2 -funroll-loops
@@ -21,6 +21,9 @@ test: uuniq_test
 
 randtest: uuniq_randtest
 	./uuniq_randtest
+
+inttest: uuniq
+	./inttest
 
 bench: uuniq_bench
 	./uuniq_bench

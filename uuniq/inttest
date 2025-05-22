@@ -1,0 +1,137 @@
+#!/bin/sh
+
+ERRORS=0
+
+checkeq() {
+    if [ "$1" != "$2" ]
+    then
+      echo "Expected '$2', got '$1'"
+      ERRORS=$((ERRORS + 1))
+    fi
+}
+
+echo "uuniq <stdin> <stdout>"
+TEST="$(./uuniq /dev/null)"
+EXPECTED=""
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS
+Hello
+world!
+ENDS
+)"
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS
+Hello
+Hello
+ENDS
+)"
+EXPECTED="Hello"
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS
+Hello
+Hello
+Hello
+ENDS
+)"
+EXPECTED="Hello"
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS
+Hello
+world!
+Hello
+ENDS
+)"
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+
+# - as input file means standard input
+TEST="$(./uuniq <<ENDS -
+Hello
+world!
+Hello
+ENDS
+)"
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+
+# - as output file means standard output
+TEST="$(./uuniq <<ENDS - -
+Hello
+world!
+Hello
+ENDS
+)"
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS
+Hello
+world!
+Hello
+world!
+ENDS
+)"
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+
+TMPFILEBASE=$(basename "$0")
+TMPIN=$(mktemp /tmp/"${TMPFILEBASE}-in.XXXXXX")
+
+echo "uuniq [inputfile] <stdout>"
+cat <<ENDS > "$TMPIN"
+Hello
+world!
+Hello
+ENDS
+TEST=$(./uuniq "$TMPIN")
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+rm "$TMPIN"
+
+echo "uuniq [inputfile] [outputfile]"
+TMPOUT=$(mktemp /tmp/"${TMPFILEBASE}-out.XXXXXX")
+
+cat <<ENDS > "$TMPIN"
+Hello
+world!
+Hello
+ENDS
+./uuniq "$TMPIN" "$TMPOUT"
+TEST=$(cat "$TMPOUT")
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
+rm "$TMPIN"
+rm "$TMPOUT"
+
+# Check uuniq overwrites output file
+echo "Not the expected output" > "$TMPOUT"
+./uuniq <<ENDS - "$TMPOUT"
+Expected output
+ENDS
+TEST=$(cat "$TMPOUT")
+EXPECTED="Expected output"
+checkeq "$TEST" "$EXPECTED"
+rm "$TMPOUT"
+
+echo "uuniq -h"
+TEST=$(./uuniq -h | grep "Usage:")
+EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
+checkeq "$TEST" "$EXPECTED"
+
+if [ $ERRORS -gt 0 ]
+then
+    echo "$ERRORS failures"
+fi
+exit $ERRORS

@@ -23,7 +23,6 @@ For other targets, see `randtest` and `bench` in the Makefile.
 ## TODO
 - Implement suitable set of `uniq` command-line flags while retaining the immediate output nature of `uuniq`.
 - Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
-- Add integration tests using shell scripts
 - Add fuzz testing
 - More optimisation ideas:
   - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP.
