@@ -474,11 +474,12 @@ static void writeline(Output *bo, Str str) {
 static void usage(Output *b)
 {
     static u8 usage_text[] =
-    "usage: uuniq [options] [INPATH [OUTPATH]]\n"
-    "  -h            print this message\n"
-    "  -v            display version information\n"
-    "  -x[i][m]      strace-like log on standard error\n"
-    "                -xi for I/O only, -xm for memory allocations only.\n";
+    "Usage: uuniq [options] [INPATH [OUTPATH]]\n"
+    "  -d            Suppress the writing of lines that are not repeated in the input.\n"
+    "  -h            Print this message.\n"
+    "  -v            Display version information.\n"
+    "  -x[i][m]      Output strace-like log on standard error.\n"
+    "                [-xi for I/O only, -xm for memory allocations only]\n";
     print(b, S(usage_text));
 }
 
