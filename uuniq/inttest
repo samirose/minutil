@@ -125,6 +125,17 @@ EXPECTED="Expected output"
 checkeq "$TEST" "$EXPECTED"
 rm "$TMPOUT"
 
+echo "uuniq -d"
+TEST="$(./uuniq <<ENDS -d
+Hello
+world!
+Hello
+Hello
+ENDS
+)"
+EXPECTED="Hello"
+checkeq "$TEST" "$EXPECTED"
+
 echo "uuniq -h"
 TEST=$(./uuniq -h | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
