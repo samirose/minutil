@@ -12,6 +12,7 @@ checkeq() {
 
 echo "uuniq <stdin> <stdout>"
 TEST="$(./uuniq /dev/null)"
+checkeq $? 0
 EXPECTED=""
 checkeq "$TEST" "$EXPECTED"
 
@@ -20,6 +21,7 @@ Hello
 world!
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -29,6 +31,7 @@ Hello
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello"
 checkeq "$TEST" "$EXPECTED"
 
@@ -38,6 +41,7 @@ Hello
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello"
 checkeq "$TEST" "$EXPECTED"
 
@@ -47,6 +51,7 @@ world!
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -58,6 +63,7 @@ world!
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -69,6 +75,7 @@ world!
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -80,6 +87,7 @@ Hello
 world!
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -94,6 +102,7 @@ world!
 Hello
 ENDS
 TEST=$(./uuniq "$TMPIN")
+checkeq $? 0
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
@@ -108,6 +117,7 @@ world!
 Hello
 ENDS
 ./uuniq "$TMPIN" "$TMPOUT"
+checkeq $? 0
 TEST=$(cat "$TMPOUT")
 EXPECTED="Hello
 world!"
@@ -120,6 +130,7 @@ echo "Not the expected output" > "$TMPOUT"
 ./uuniq <<ENDS - "$TMPOUT"
 Expected output
 ENDS
+checkeq $? 0
 TEST=$(cat "$TMPOUT")
 EXPECTED="Expected output"
 checkeq "$TEST" "$EXPECTED"
@@ -133,11 +144,14 @@ Hello
 Hello
 ENDS
 )"
+checkeq $? 0
 EXPECTED="Hello"
 checkeq "$TEST" "$EXPECTED"
 
 echo "uuniq -h"
-TEST=$(./uuniq -h | grep "Usage:")
+TEST=$(./uuniq -h)
+checkeq $? 0
+TEST=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
 checkeq "$TEST" "$EXPECTED"
 
