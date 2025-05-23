@@ -141,6 +141,13 @@ TEST=$(./uuniq -h | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
 checkeq "$TEST" "$EXPECTED"
 
+echo "uuniq <unknown option>"
+TEST=$(./uuniq -xyz 2>&1)
+checkeq $? 1
+TEST=$(echo "$TEST" | grep "Usage:")
+EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
+checkeq "$TEST" "$EXPECTED"
+
 if [ $ERRORS -gt 0 ]
 then
     echo "$ERRORS failures"
