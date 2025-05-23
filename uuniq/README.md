@@ -22,12 +22,15 @@ For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
 - Implement suitable set of `uniq` command-line flags while retaining the immediate output nature of `uuniq`.
+- Add compatibility test suite verifying that '<input> uuniq <flags> | sort' output matches '<input> | sort | uniq <flags>'
+  - jot and rs commands can be combined to generate random input
 - Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
 - Add fuzz testing
 - More optimisation ideas:
   - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP.
 - Add Linux x86 CRT-free platform
 - Maybe add Linux aarch64 CRT-free platform
+- Write a man page for uuniq
 - Test 32bit big endian compatibility using QEMU, see https://nullprogram.com/blog/2021/08/21/.
 
 ## Notes
