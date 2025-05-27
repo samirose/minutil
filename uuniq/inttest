@@ -183,6 +183,25 @@ for input in uuniq.c Makefile "$0"; do
   rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 done
 
+TEMPIN_RAND=$(mktemp /tmp/"${TMPFILEBASE}-in-rand.XXXXXX")
+awk -v seed=123 -v nuniqlines=1000 -v nlines=1000 -v minlen=0 -v maxlen=100 -f randlines.awk > "$TEMPIN_RAND"
+
+echo "compare 'uuniq | sort' output to 'sort | uniq' with random input"
+./uuniq "$TEMPIN_RAND" | sort > "$TMPOUT_UUNIQ"
+sort "$TEMPIN_RAND" | uniq > "$TMPOUT_UNIQ"
+cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+checkeq $? 0
+rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+
+echo "compare 'uuniq -d | sort' output to 'sort | uniq -d' with random input"
+./uuniq -d "$TEMPIN_RAND" | sort > "$TMPOUT_UUNIQ"
+sort "$TEMPIN_RAND" | uniq -d > "$TMPOUT_UNIQ"
+cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+checkeq $? 0
+rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+
+rm "$TEMPIN_RAND"
+
 if [ $ERRORS -gt 0 ]
 then
     echo "$ERRORS failures"
