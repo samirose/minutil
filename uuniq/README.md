@@ -22,8 +22,6 @@ For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
 - Implement suitable set of `uniq` command-line flags while retaining the immediate output nature of `uuniq`.
-- Add compatibility test suite verifying that '<input> uuniq <flags> | sort' output matches '<input> | sort | uniq <flags>'
-  - jot and rs commands can be combined to generate random input
 - Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
 - Add fuzz testing
 - More optimisation ideas:
