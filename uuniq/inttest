@@ -1,5 +1,6 @@
 #!/bin/sh
 
+TMPFILEBASE=$(basename "$0")
 ERRORS=0
 
 checkeq() {
@@ -92,7 +93,6 @@ EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
 
-TMPFILEBASE=$(basename "$0")
 TMPIN=$(mktemp /tmp/"${TMPFILEBASE}-in.XXXXXX")
 
 echo "uuniq [inputfile] <stdout>"
@@ -161,6 +161,27 @@ checkeq $? 1
 TEST=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
 checkeq "$TEST" "$EXPECTED"
+
+TMPOUT_UUNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uuniq.XXXXXX")
+TMPOUT_UNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uniq.XXXXXX")
+
+echo "compare 'uuniq | sort' output to 'sort | uniq'"
+for input in uuniq.c Makefile "$0"; do
+  ./uuniq "$input" | sort > "$TMPOUT_UUNIQ"
+  sort "$input" | uniq > "$TMPOUT_UNIQ"
+  cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+  checkeq $? 0
+  rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+done
+
+echo "compare 'uuniq -d | sort' output to 'sort | uniq -d'"
+for input in uuniq.c Makefile "$0"; do
+  ./uuniq -d "$input" | sort > "$TMPOUT_UUNIQ"
+  sort "$input" | uniq -d > "$TMPOUT_UNIQ"
+  cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+  checkeq $? 0
+  rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+done
 
 if [ $ERRORS -gt 0 ]
 then
