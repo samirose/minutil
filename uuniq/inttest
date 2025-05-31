@@ -175,7 +175,7 @@ for input in uuniq.c Makefile "$0"; do
 done
 
 echo "compare 'uuniq -d | sort' output to 'sort | uniq -d'"
-for input in uuniq.c Makefile "$0"; do
+for input in /dev/null uuniq.c Makefile "$0"; do
   ./uuniq -d "$input" | sort > "$TMPOUT_UUNIQ"
   sort "$input" | uniq -d > "$TMPOUT_UNIQ"
   cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
