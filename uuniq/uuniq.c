@@ -449,21 +449,17 @@ static u64 hash64(Str s)
     return h;
 }
 
-static iz upsert(Strset **set, Str str, b32 clonestr, Arena *a)
+static Strset* upsert(Strset **set, Str str, b32 clonestr, Arena *a)
 {
     for (uint64_t h = hash64(str); *set; h <<= 2) {
         if (equals(str, (*set)->str)) {
-            return ++(*set)->count;
+            return *set;
         }
         set = &(*set)->child[h>>62];
     }
-    // new entry
-    if (clonestr) {
-        str = clone(a, str);
-    }
     *set = new(a, Strset);
-    (*set)->str = str;
-    return (*set)->count = 1;
+    (*set)->str = clonestr ? clone(a, str) : str;
+    return *set;
 }
 
 static void writeline(Output *bo, Str str) {
@@ -585,9 +581,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         if (!line.text.len && bi->eof) {
             break;
         }
-        switch (upsert(&lineset, line.text, line.inbuf, &t)) {
+        Strset *entry = upsert(&lineset, line.text, line.inbuf, &t);
+        switch (++entry->count) {
         case 1:  // Initially seen line
-            a = t; // Save the line
+            a = t; // Save the line and entry
             if (!dopt) writeline(bo, line.text);
             break;
         case 2: // First detected duplicate line
