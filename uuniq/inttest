@@ -197,6 +197,13 @@ TEST=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
 checkeq "$TEST" "$EXPECTED"
 
+echo "uuniq -v"
+TEST=$(./uuniq -v)
+checkeq $? 0
+TEST=$(echo "$TEST" | sed -E 's/uuniq ([0-9]{4}-[0-9]{2}-[0-9]{2})/uuniq YYYY-MM-DD/')
+EXPECTED="uuniq YYYY-MM-DD"
+checkeq "$TEST" "$EXPECTED"
+
 echo "uuniq <unknown option>"
 TEST=$(./uuniq -xyz 2>&1)
 checkeq $? 1
