@@ -18,6 +18,11 @@ To compile and run tests:
 $ cc -DTEST -g3 -fsanitize=undefined -fsanitize-trap -o uuniq_test uuniq.c && ./uuniq_test
 ```
 
+To compile the program and run integration tests:
+```shell
+$ cc -O2 -funroll-loops -s -o uuniq uuniq.c && ./inttest
+```
+
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
