@@ -148,6 +148,48 @@ checkeq $? 0
 EXPECTED="Hello"
 checkeq "$TEST" "$EXPECTED"
 
+echo "uuniq -u"
+TEST="$(./uuniq <<ENDS -u
+Hello
+world!
+Hello
+Hello
+ENDS
+)"
+checkeq $? 0
+EXPECTED="world!"
+checkeq "$TEST" "$EXPECTED"
+
+echo "uuniq -d -u output should be empty"
+TEST=$(./uuniq -d -u /dev/null)
+checkeq $? 0
+EXPECTED=""
+checkeq "$TEST" "$EXPECTED"
+
+TEST=$(./uuniq -u -d /dev/null)
+checkeq $? 0
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS -d -u
+Hello
+world!
+Hello
+Hello
+ENDS
+)"
+checkeq $? 0
+checkeq "$TEST" "$EXPECTED"
+
+TEST="$(./uuniq <<ENDS -u -d
+Hello
+world!
+Hello
+Hello
+ENDS
+)"
+checkeq $? 0
+checkeq "$TEST" "$EXPECTED"
+
 echo "uuniq -h"
 TEST=$(./uuniq -h)
 checkeq $? 0
@@ -183,6 +225,15 @@ for input in /dev/null uuniq.c Makefile "$0"; do
   rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 done
 
+echo "compare 'uuniq -u | sort' output to 'sort | uniq -u'"
+for input in /dev/null uuniq.c Makefile "$0"; do
+  ./uuniq -u "$input" | sort > "$TMPOUT_UUNIQ"
+  sort "$input" | uniq -u > "$TMPOUT_UNIQ"
+  cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+  checkeq $? 0
+  rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+done
+
 TEMPIN_RAND=$(mktemp /tmp/"${TMPFILEBASE}-in-rand.XXXXXX")
 awk -v seed=123 -v nuniqlines=1000 -v nlines=1000 -v minlen=0 -v maxlen=100 -f randlines.awk > "$TEMPIN_RAND"
 
@@ -196,6 +247,13 @@ rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 echo "compare 'uuniq -d | sort' output to 'sort | uniq -d' with random input"
 ./uuniq -d "$TEMPIN_RAND" | sort > "$TMPOUT_UUNIQ"
 sort "$TEMPIN_RAND" | uniq -d > "$TMPOUT_UNIQ"
+cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+checkeq $? 0
+rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+
+echo "compare 'uuniq -u | sort' output to 'sort | uniq -u' with random input"
+./uuniq -u "$TEMPIN_RAND" | sort > "$TMPOUT_UUNIQ"
+sort "$TEMPIN_RAND" | uniq -u > "$TMPOUT_UNIQ"
 cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 checkeq $? 0
 rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"

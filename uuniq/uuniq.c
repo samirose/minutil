@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-05-21"
+#define VERSION "2025-06-03"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
@@ -435,6 +435,7 @@ static void printq(Output *b, Str s)
 typedef struct Strset Strset;
 struct Strset {
     Strset *child[4];
+    Strset *next;
     Str str;
     iz count;
 };
@@ -473,6 +474,7 @@ static void usage(Output *b)
     "Usage: uuniq [options] [INPATH [OUTPATH]]\n"
     "  -d            Suppress the writing of lines that are not repeated in the input.\n"
     "  -h            Print this message.\n"
+    "  -u            Suppress the writing of lines that are repeated in the input.\n"
     "  -v            Display version information.\n"
     "  -x[i][m]      Output strace-like log on standard error.\n"
     "                [-xi for I/O only, -xm for memory allocations only]\n";
@@ -487,7 +489,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
-    i32 dopt = 0;
+    b32 dopt = 0, uopt = 0;
     i32 argi = 1;
     for (i32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
@@ -513,6 +515,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
         case 'd':
             dopt = 1;
+            break;
+
+        case 'u':
+            uopt = 1;
             break;
 
         case 'x':
@@ -575,7 +581,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     }
 
     // Main loop
-    for (;;) {
+    for (Strset *prev = &(Strset){0};;) {
         Arena t = a;
         Inputline line = nextline(bi, &t);
         if (!line.text.len && bi->eof) {
@@ -584,14 +590,24 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         Strset *entry = upsert(&lineset, line.text, line.inbuf, &t);
         switch (++entry->count) {
         case 1:  // Initially seen line
+            prev->next = entry;
+            prev = entry;
             a = t; // Save the line and entry
-            if (!dopt) writeline(bo, line.text);
+            if (!dopt && !uopt) writeline(bo, line.text);
             break;
         case 2: // First detected duplicate line
-            if (dopt) writeline(bo, line.text);
+            if (dopt && !uopt) writeline(bo, line.text);
             break;
         default:
             break;
+        }
+    }
+
+    if (uopt && !dopt) {
+        for (Strset *entry = lineset; entry; entry = entry->next) {
+            if (entry->count == 1) {
+                writeline(bo, entry->str);
+            }
         }
     }
 
@@ -896,6 +912,121 @@ static void test_opt_d(Arena scratch)
     );
 }
 
+static void test_opt_u(Arena scratch)
+{
+    puts("TEST: uuniq -u [filename]");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("\n");
+    expect(
+        STATUS_OK,
+        S("\n"),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("\n\n");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello");
+    expect(
+        STATUS_OK,
+        S("Hello\n"),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\n");
+    expect(
+        STATUS_OK,
+        S("Hello\n"),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nHello");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nworld!!!");
+    expect(
+        STATUS_OK,
+        S("Hello\nworld!!!\n"),
+        "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("world!!!\nHello\nHello world!!!\nHello");
+    expect(
+        STATUS_OK,
+        S("world!!!\nHello world!!!\n"),
+        "-u"
+    );
+}
+
+static void test_opt_d_and_u(Arena scratch)
+{
+    puts("TEST: uuniq -d -u [filename]");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d", "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nworld!!!\nHello");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-d", "-u"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nworld!!!\nHello");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-u", "-d"
+    );
+}
+
 static void test_longlines(Arena scratch)
 {
     puts("TEST: uuniq long lines");
@@ -978,6 +1109,8 @@ int main(void)
     Arena a   = {0, mem, mem+cap};
     test_basic(a);
     test_opt_d(a);
+    test_opt_u(a);
+    test_opt_d_and_u(a);
     test_longlines(a);
     puts("all tests passed");
 }
@@ -1140,6 +1273,28 @@ static void test_random(Arena scratch)
             }
 
             char *argv[] = {"uuniq", "-d", 0};
+            i32 argc = countof(argv) - 1;
+            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+
+            affirm(status == STATUS_OK);
+            affirm(equals(plt.output, expectedoutput));
+        }
+
+        {
+            Arena t = a;
+            Plt plt = {0};
+            plt.input = input;
+            plt.cap = maxoutsz;
+            plt.output.data = new(&t, u8, plt.cap);
+
+            Str expectedoutput = {0};
+            for (i32 i = 0; i < uniqlines; i++) {
+                if (inputlines[i].repeated == 1) {
+                    expectedoutput = concat(&t, expectedoutput, inputlines[i].line);
+                }
+            }
+
+            char *argv[] = {"uuniq", "-u", 0};
             i32 argc = countof(argv) - 1;
             i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
 
