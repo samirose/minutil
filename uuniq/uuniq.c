@@ -472,6 +472,7 @@ static void usage(Output *b)
 {
     static u8 usage_text[] =
     "Usage: uuniq [options] [INPATH [OUTPATH]]\n"
+    "  -c            Precede each output line with a count of the number of times the line occurred in the input.\n"
     "  -d            Suppress the writing of lines that are not repeated in the input.\n"
     "  -h            Print this message.\n"
     "  -u            Suppress the writing of lines that are repeated in the input.\n"
@@ -489,7 +490,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     Output *be = newoutput(&a, 2, ctx);
     ctx->be = be;
 
-    b32 dopt = 0, uopt = 0;
+    b32 dopt = 0, uopt = 0, copt = 0;
     i32 argi = 1;
     for (i32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
@@ -512,6 +513,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             print(bo, S("uuniq " VERSION "\n"));
             flush(bo);
             return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+        case 'c':
+            copt = 1;
+            break;
 
         case 'd':
             dopt = 1;
@@ -588,26 +593,34 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             break;
         }
         Strset *entry = upsert(&lineset, line.text, line.inbuf, &t);
-        switch (++entry->count) {
-        case 1:  // Initially seen line
+        if (++entry->count == 1) { // Initially seen line
             prev->next = entry;
             prev = entry;
             a = t; // Save the line and entry
-            if (!dopt && !uopt) writeline(bo, line.text);
+        }
+        if (copt || uopt)
+            continue;
+        switch (entry->count) {
+        case 1:  // Initially seen line
+            if (!dopt) writeline(bo, line.text);
             break;
         case 2: // First detected duplicate line
-            if (dopt && !uopt) writeline(bo, line.text);
+            if (dopt) writeline(bo, line.text);
             break;
         default:
             break;
         }
     }
 
-    if (uopt && !dopt) {
+    if (copt || uopt) {
         for (Strset *entry = lineset; entry; entry = entry->next) {
-            if (entry->count == 1) {
-                writeline(bo, entry->str);
+            if ((uopt && entry->count != 1) || (dopt && entry->count == 1))
+                continue;
+            if (copt) {
+                printi64(bo, entry->count);
+                printu8(bo, ' ');
             }
+            writeline(bo, entry->str);
         }
     }
 
