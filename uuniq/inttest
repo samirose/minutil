@@ -190,6 +190,19 @@ ENDS
 checkeq $? 0
 checkeq "$TEST" "$EXPECTED"
 
+echo "uuniq -c"
+TEST="$(./uuniq <<ENDS -c
+Hello
+world!
+Hello
+Hello
+ENDS
+)"
+checkeq $? 0
+EXPECTED="3 Hello
+1 world!"
+checkeq "$TEST" "$EXPECTED"
+
 echo "uuniq -h"
 TEST=$(./uuniq -h)
 checkeq $? 0
@@ -215,7 +228,7 @@ TMPOUT_UUNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uuniq.XXXXXX")
 TMPOUT_UNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uniq.XXXXXX")
 
 echo "compare 'uuniq | sort' output to 'sort | uniq'"
-for input in uuniq.c Makefile "$0"; do
+for input in /dev/null uuniq.c Makefile "$0"; do
   ./uuniq "$input" | sort > "$TMPOUT_UUNIQ"
   sort "$input" | uniq > "$TMPOUT_UNIQ"
   cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
@@ -241,6 +254,19 @@ for input in /dev/null uuniq.c Makefile "$0"; do
   rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 done
 
+trimwhitespace() {
+  sed 's/^[ \t]*\([1-9][0-9]*\)[ \t][ \t]*/\1 /'
+}
+
+echo "compare 'uuniq -c | sort -n' output to 'sort | uniq -c | sort -n'"
+for input in /dev/null uuniq.c Makefile "$0"; do
+  ./uuniq -c "$input" | trimwhitespace | sort -n > "$TMPOUT_UUNIQ"
+  sort "$input" | uniq -c | trimwhitespace | sort -n > "$TMPOUT_UNIQ"
+  cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+  checkeq $? 0
+  rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+done
+
 TEMPIN_RAND=$(mktemp /tmp/"${TMPFILEBASE}-in-rand.XXXXXX")
 awk -v seed=123 -v nuniqlines=1000 -v nlines=1000 -v minlen=0 -v maxlen=100 -f randlines.awk > "$TEMPIN_RAND"
 
@@ -261,6 +287,13 @@ rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 echo "compare 'uuniq -u | sort' output to 'sort | uniq -u' with random input"
 ./uuniq -u "$TEMPIN_RAND" | sort > "$TMPOUT_UUNIQ"
 sort "$TEMPIN_RAND" | uniq -u > "$TMPOUT_UNIQ"
+cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+checkeq $? 0
+rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
+
+echo "compare 'uuniq -c | sort -n' output to 'sort | uniq -u | sort -n' with random input"
+./uuniq -c "$TEMPIN_RAND" | trimwhitespace | sort -n > "$TMPOUT_UUNIQ"
+sort "$TEMPIN_RAND" | uniq -c | trimwhitespace | sort -n > "$TMPOUT_UNIQ"
 cmp "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"
 checkeq $? 0
 rm "$TMPOUT_UUNIQ" "$TMPOUT_UNIQ"

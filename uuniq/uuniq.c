@@ -1040,6 +1040,41 @@ static void test_opt_d_and_u(Arena scratch)
     );
 }
 
+static void test_opt_c(Arena scratch)
+{
+    puts("TEST: uuniq -c [filename]");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-c"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello");
+    expect(
+        STATUS_OK,
+        S("1 Hello\n"),
+        "-c"
+    );
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("Hello\nworld!!!\nHello");
+    expect(
+        STATUS_OK,
+        S("2 Hello\n1 world!!!\n"),
+        "-c"
+    );
+}
+
 static void test_longlines(Arena scratch)
 {
     puts("TEST: uuniq long lines");
@@ -1124,6 +1159,7 @@ int main(void)
     test_opt_d(a);
     test_opt_u(a);
     test_opt_d_and_u(a);
+    test_opt_c(a);
     test_longlines(a);
     puts("all tests passed");
 }
