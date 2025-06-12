@@ -1250,7 +1250,7 @@ static void test_random(Arena scratch)
     linebuf.data = new(&scratch, u8, longlinelen + 1);
 
     for (u64 r = 1;; r++) {
-        if (!(r % 10000)) {
+        if (!(r % 1000)) {
             printf("%llu\n", (long long)r);
         }
 
