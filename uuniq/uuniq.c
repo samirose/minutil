@@ -1350,6 +1350,29 @@ static void test_random(Arena scratch)
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
         }
+
+        {
+            Arena t = a;
+            Plt plt = {0};
+            plt.input = input;
+            plt.cap = maxoutsz;
+            plt.output.data = new(&t, u8, plt.cap);
+
+            Str expectedoutput = {0};
+            u8 buf[32];
+            for (i32 i = 0; i < uniqlines; i++) {
+                sprintf((char *)buf, "%d ", inputlines[i].repeated);
+                expectedoutput = concat(&t, expectedoutput, import(buf));
+                expectedoutput = concat(&t, expectedoutput, inputlines[i].line);
+            }
+
+            char *argv[] = {"uuniq", "-c", 0};
+            i32 argc = countof(argv) - 1;
+            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+
+            affirm(status == STATUS_OK);
+            affirm(equals(plt.output, expectedoutput));
+        }
     }
 }
 
