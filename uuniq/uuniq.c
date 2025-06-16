@@ -75,6 +75,7 @@ typedef struct {
     Output *be;
     b32     traceio;
     b32     tracemem;
+    Mem     initialmem;
     iz      totalmem;
 } Uuniq;
 
@@ -89,6 +90,8 @@ enum {
 };
 
 static u8 lohex[16] = "0123456789abcdef";
+
+static void tracemem(Uuniq *ctx, Mem mem);
 
 struct Arena {
     Uuniq  *ctx;
@@ -107,18 +110,7 @@ static void oom(Arena *a)
     *a = newarena(ctx, mem.beg, mem.cap);
     ctx->totalmem += mem.cap;
 
-    if (!ctx->tracemem) {
-        return;
-    }
-    Output *be = ctx->be;
-    print(be, S("alloc() = "));
-    printu64hex(be, (uintptr_t)mem.beg);
-    print(be, S(":"));
-    printu64hex(be, (uintptr_t)mem.beg+mem.cap);
-    print(be, S(" total = "));
-    printu64hex(be, ctx->totalmem);
-    print(be, S("\n"));
-    flush(be);
+    if (ctx->tracemem) tracemem(ctx, mem);
 }
 
 enum {
@@ -180,6 +172,18 @@ static Str concat(Arena *a, Str head, Str tail)
     }
     head.len += clone(a, tail).len;
     return head;
+}
+
+static void tracemem(Uuniq *ctx, Mem mem) {
+    Output *be = ctx->be;
+    print(be, S("alloc() = "));
+    printu64hex(be, (uintptr_t)mem.beg);
+    print(be, S(":"));
+    printu64hex(be, (uintptr_t)mem.beg+mem.cap);
+    print(be, S(" total = "));
+    printu64hex(be, ctx->totalmem);
+    print(be, S("\n"));
+    flush(be);
 }
 
 typedef struct {
@@ -524,6 +528,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         case 'x':
             ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
             ctx->tracemem = !arg[2] || (arg[2] == 'm' && !arg[3]);
+            if (ctx->tracemem) tracemem(ctx, ctx->initialmem);
             if (ctx->traceio || ctx->tracemem) {
                 break;
             }
@@ -647,6 +652,7 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
     Arena a  = newarena(0, mem.beg, mem.cap);
     Uuniq *ctx = a.ctx = new(&a, Uuniq);  // cannot fail (always fits)
     ctx->plt = plt;
+    ctx->initialmem = mem;
     ctx->totalmem = mem.cap;
 
     i32 r = uuniq_(argc, argv, ctx, a);
@@ -1542,19 +1548,35 @@ int main(void)
 struct Plt {
     // Virtual file descriptor table
     int fds[3];
+    iz memcap;
     iz allocsz;
 };
 
+static iz plt_memcap() {
+    // _SC_PHYS_PAGES is not standard, but widely supported: Linux, BSDs and macOS
+    iz pages = sysconf(_SC_PHYS_PAGES);
+    iz psize = sysconf(_SC_PAGESIZE);
+    iz cap = pages * psize;
+    if (cap < 1<<22) cap = 1<<22;
+    // Returns half of physical memory on the system or 2MiB
+    return cap / 2;
+}
+
+static void plt_exit_oom(Plt *plt) {
+    static const u8 msg[] = "uuniq: not enough memory\n";
+    plt_write(plt, 2, (u8*)msg, countof(msg));
+    plt_exit(plt, STATUS_OOM);
+}
+
 static Mem plt_alloc(Plt *plt) {
     Mem r = {0};
-    r.beg = mmap(0, plt->allocsz, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
-    if (r.beg == MAP_FAILED) {
-        static const u8 msg[] = "uuniq: not enough memory\n";
-        plt_write(plt, 2, (u8*)msg, countof(msg));
-        plt_exit(plt, STATUS_OOM);
-    }
-    r.cap = plt->allocsz;
-    plt->allocsz *= 2;
+    if (plt->allocsz == plt->memcap)
+        plt_exit_oom(plt);
+    byte *mem = mmap(0, plt->memcap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    if (mem == MAP_FAILED)
+        plt_exit_oom(plt);
+    r.beg = mem;
+    r.cap = plt->allocsz = plt->memcap;
     return r;
 }
 
@@ -1585,7 +1607,8 @@ int main(int argc, char **argv)
 {
     Plt plt = {
         .fds = {0, 1, 2},
-        .allocsz = 1<<24 // Initially 16MiB
+        .memcap = plt_memcap(),
+        .allocsz = 0
     };
     Mem mem = plt_alloc(&plt);
     return uuniq(argc, (u8 **)argv, &plt, mem);
