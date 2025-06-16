@@ -1542,20 +1542,19 @@ int main(void)
 struct Plt {
     // Virtual file descriptor table
     int fds[3];
+    iz allocsz;
 };
-
-static iz allocsz = 1<<24; // Initially 16MiB
 
 static Mem plt_alloc(Plt *plt) {
     Mem r = {0};
-    r.beg = mmap(0, allocsz, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    r.beg = mmap(0, plt->allocsz, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
     if (r.beg == MAP_FAILED) {
         static const u8 msg[] = "uuniq: not enough memory\n";
         plt_write(plt, 2, (u8*)msg, countof(msg));
         plt_exit(plt, STATUS_OOM);
     }
-    r.cap = allocsz;
-    allocsz *= 2;
+    r.cap = plt->allocsz;
+    plt->allocsz *= 2;
     return r;
 }
 
@@ -1584,7 +1583,10 @@ static void plt_exit(Plt *, i32 r)
 
 int main(int argc, char **argv)
 {
-    Plt plt = {{0, 1, 2}};
+    Plt plt = {
+        .fds = {0, 1, 2},
+        .allocsz = 1<<24 // Initially 16MiB
+    };
     Mem mem = plt_alloc(&plt);
     return uuniq(argc, (u8 **)argv, &plt, mem);
 }
