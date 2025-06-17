@@ -26,11 +26,13 @@ $ cc -O2 -funroll-loops -s -o uuniq uuniq.c && ./inttest
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
-- Implement suitable set of `uniq` command-line flags while retaining the immediate output nature of `uuniq`.
+- Implement POSIX standard set of `uniq` command-line flags
 - Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
+  - There is an implementation similar to how BSD sort decides how much memory to use, but it needs more testing on different platforms.
 - Add fuzz testing
 - More optimisation ideas:
-  - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP.
+  - Store the hash set nodes and the line strings to separate arenas. The hypothesis is that improved locality will speed up the hash set lookups.
+  - Compute hash for the input line as it is scanned for newline. Possibly utilises better processor's ILP. Might clash with implementation of -f and -s flags.
 - Add Linux x86 CRT-free platform
 - Maybe add Linux aarch64 CRT-free platform
 - Write a man page for uuniq
