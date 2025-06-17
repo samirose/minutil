@@ -450,17 +450,12 @@ static u64 hash64(Str s)
     return h;
 }
 
-static Strset* upsert(Strset **set, Str str, b32 clonestr, Arena *a)
+static Strset** lookup(Strset **set, Str str)
 {
-    for (uint64_t h = hash64(str); *set; h <<= 2) {
-        if (equals(str, (*set)->str)) {
-            return *set;
-        }
+    for (uint64_t h = hash64(str); *set && !equals(str, (*set)->str); h <<= 2) {
         set = &(*set)->child[h>>62];
     }
-    *set = new(a, Strset);
-    (*set)->str = clonestr ? clone(a, str) : str;
-    return *set;
+    return set;
 }
 
 static void writeline(Output *bo, Str str) {
@@ -592,15 +587,18 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         if (!line.text.len && bi->eof) {
             break;
         }
-        Strset *entry = upsert(&lineset, line.text, line.inbuf, &t);
-        if (++entry->count == 1) { // Initially seen line
-            prev->next = entry;
-            prev = entry;
+        Strset **entry = lookup(&lineset, line.text);
+        if (!*entry) { // Initially seen line
+            *entry = new(&t, Strset);
+            (*entry)->str = line.inbuf ? clone(&t, line.text) : line.text;
+            prev->next = *entry;
+            prev = *entry;
             a = t; // Save the line and entry
         }
+        ++(*entry)->count;
         if (copt || uopt)
             continue;
-        switch (entry->count) {
+        switch ((*entry)->count) {
         case 1:  // Initially seen line
             if (!dopt) writeline(bo, line.text);
             break;
