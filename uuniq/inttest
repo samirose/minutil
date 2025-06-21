@@ -122,6 +122,14 @@ TEST=$(cat "$TMPOUT")
 EXPECTED="Hello
 world!"
 checkeq "$TEST" "$EXPECTED"
+
+echo "uuniq -- marks end of options"
+./uuniq "$TMPIN" "$TMPOUT"
+checkeq $? 0
+TEST=$(cat "$TMPOUT")
+EXPECTED="Hello
+world!"
+checkeq "$TEST" "$EXPECTED"
 rm "$TMPIN"
 rm "$TMPOUT"
 

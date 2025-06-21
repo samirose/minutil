@@ -503,6 +503,11 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             done = 1;
             break;
 
+        case '-':  // "--" end of options
+            argi++;
+            done = 1;
+            break;
+
         case 'h':
             usage(bo);
             flush(bo);
