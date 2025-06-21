@@ -1543,6 +1543,7 @@ int main(void)
 
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 struct Plt {
@@ -1556,10 +1557,19 @@ static iz plt_memcap() {
     // _SC_PHYS_PAGES is not standard, but widely supported: Linux, BSDs and macOS
     iz pages = sysconf(_SC_PHYS_PAGES);
     iz psize = sysconf(_SC_PAGESIZE);
-    iz cap = pages * psize;
-    if (cap < 1<<22) cap = 1<<22;
-    // Returns half of physical memory on the system or 2MiB
-    return cap / 2;
+    // Half of physical memory
+    iz cap = pages * psize / 2;
+
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_DATA, &rl) == 0) {
+        cap = (iz)rl.rlim_cur < cap ? rl.rlim_cur : cap;
+    }
+    if (getrlimit(RLIMIT_RSS, &rl) == 0) {
+        cap = (iz)rl.rlim_cur < cap ? rl.rlim_cur : cap;
+    }
+
+    if (cap < 1<<24) cap = 1<<24;
+    return cap;
 }
 
 static void plt_exit_oom(Plt *plt) {
