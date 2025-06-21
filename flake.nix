@@ -21,5 +21,6 @@
         ];
       };
       formatter.${system} = pkgs.nixfmt-rfc-style;
+      documentation.dev.enable = true;
     };
 }
