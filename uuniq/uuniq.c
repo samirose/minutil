@@ -661,6 +661,14 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
     ctx->totalmem = mem.cap;
 
     i32 r = uuniq_(argc, argv, ctx, a);
+    if (ctx->traceio) {
+        Output *be = ctx->be;
+        print(be, S("exit("));
+        printi64(be, r);
+        print(be, S(") = ?\n"));
+        flush(be);
+    }
+
     return r;
 }
 
