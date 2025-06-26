@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-06-03"
+#define VERSION "2025-06-26"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
@@ -36,14 +36,22 @@ typedef struct {
     iz    cap;
 } Mem;
 
-static Mem  plt_alloc(Plt *);                          // mmap(2)
+static Mem  plt_alloc(Plt *, iz);                      // mmap(2)
+static iz   plt_memcap(Plt *);
 static b32  plt_open(Plt *, i32, u8 *, b32, Arena *);  // open(2)
 static i32  plt_read(Plt *, u8 *, i32);                // read(2)
 static b32  plt_write(Plt *, i32 fd, u8 *, i32);       // write(2)
 static void plt_exit(Plt *, i32);                      // _exit(2)
-static i32  uuniq(i32, u8 **, Plt *, Mem);             // main
 
 // Application
+
+typedef struct Uuniq Uuniq;
+static Arena uuniq_alloc(Uuniq *, iz);
+static b32   uuniq_open(Uuniq *, i32, u8 *, b32, Arena *);
+static i32   uuniq_read(Uuniq *, u8 *, i32);
+static b32   uuniq_write(Uuniq *, i32, u8 *, i32);
+static void  uuniq_exit(Uuniq *, i32);
+static i32   uuniq(i32, u8 **, Plt *);
 
 #define countof(a)      (iz)(sizeof(a) / sizeof(*(a)))
 #define affirm(c)       while (!(c)) __builtin_unreachable()
@@ -70,13 +78,11 @@ static void printu64hex(Output *b, u64 x);
 static void printq(Output *, Str);
 static void flush(Output *);
 
-typedef struct {
+typedef struct Uuniq {
     Plt    *plt;
     Output *be;
     b32     traceio;
     b32     tracemem;
-    Mem     initialmem;
-    iz      totalmem;
 } Uuniq;
 
 // Main program
@@ -106,11 +112,9 @@ static Arena newarena(Uuniq *ctx, byte *mem, iz cap) {
 static void oom(Arena *a)
 {
     Uuniq *ctx = a->ctx;
-    Mem mem = plt_alloc(ctx->plt);
-    *a = newarena(ctx, mem.beg, mem.cap);
-    ctx->totalmem += mem.cap;
-
-    if (ctx->tracemem) tracemem(ctx, mem);
+    print(ctx->be, S("uuniq: out of memory\n"));
+    flush(ctx->be);
+    uuniq_exit(ctx, STATUS_OOM);
 }
 
 enum {
@@ -174,16 +178,19 @@ static Str concat(Arena *a, Str head, Str tail)
     return head;
 }
 
-static void tracemem(Uuniq *ctx, Mem mem) {
+static Arena uuniq_alloc(Uuniq *ctx, iz cap) {
+    Mem mem = plt_alloc(ctx->plt, cap ? cap : plt_memcap(ctx->plt));
+    Arena a = newarena(ctx, mem.beg, mem.cap);
+    if (!ctx->tracemem) {
+        return a;
+    }
+
     Output *be = ctx->be;
     print(be, S("alloc() = "));
-    printu64hex(be, (uintptr_t)mem.beg);
-    print(be, S(":"));
-    printu64hex(be, (uintptr_t)mem.beg+mem.cap);
-    print(be, S(" total = "));
-    printu64hex(be, ctx->totalmem);
+    printu64hex(be, (uintptr_t)mem.cap);
     print(be, S("\n"));
     flush(be);
+    return a;
 }
 
 typedef struct {
@@ -269,6 +276,23 @@ static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
     return r;
 }
 
+static void trace_exit(Uuniq *ctx, i32 r) {
+    if (ctx->traceio) {
+        Output *be = ctx->be;
+        print(be, S("exit("));
+        printi64(be, r);
+        print(be, S(") = ?\n"));
+        flush(be);
+    }
+}
+
+static void uuniq_exit(Uuniq *ctx, i32 r)
+{
+    trace_exit(ctx, r);
+    plt_exit(ctx->plt, r);
+    affirm(0);
+}
+
 static Input *newinput(Arena *a, Uuniq *ctx)
 {
     Input *b = new(a, Input);
@@ -328,6 +352,26 @@ static Inputline nextline(Input *b, Arena *a)
         line.text = concat(a, line.text, tail);
     } while (!b->eof);
     return line;
+}
+
+typedef struct {
+    i64 value;
+    Str rest;
+} Parsed64;
+
+static Parsed64 parse64(Str s)
+{
+    Parsed64 r = { 0, s };
+    for (; r.rest.len > 0; r.rest.len--, r.rest.data++) {
+        u8 c = *r.rest.data - '0';
+        if (c > 9) {
+            return r;
+        } else if (r.value > (maxof(i64) - c)/10) {
+            return r;  // overflow
+        }
+        r.value = r.value*10 + c;
+    }
+    return r;
 }
 
 struct Output {
@@ -481,6 +525,24 @@ static void usage(Output *b)
     print(b, S(usage_text));
 }
 
+// Does not return on error.
+static Str getarg(i32 argc, u8 **argv, i32 *i, Output *be)
+{
+    Str r = {0};
+    if (argv[*i][2]) {
+        r = import(argv[*i]+2);
+    } else if (*i+1 == argc) {
+        print(be, S("uuniq: missing argument: -"));
+        printu8(be, argv[*i][1]);
+        printu8(be, '\n');
+        flush(be);
+        uuniq_exit(be->ctx, STATUS_CMD);
+    } else {
+        r = import(argv[++*i]);
+    }
+    return r;
+}
+
 static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     i32 r = STATUS_OK;
     Input *bi = newinput(&a, ctx);
@@ -490,6 +552,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     ctx->be = be;
 
     b32 dopt = 0, uopt = 0, copt = 0;
+    i64 memsz = 0;
     i32 argi = 1;
     for (i32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
@@ -498,6 +561,8 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         }
 
         switch (arg[1]) {
+            Str optarg;
+            Parsed64 p;
 
         case '\0':  // "-" standard input
             done = 1;
@@ -526,6 +591,40 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             dopt = 1;
             break;
 
+        case 'S':
+            optarg = getarg(argc, argv, &argi, be);
+            p = parse64(optarg);
+            if (p.rest.len > 0) {
+                i64 scale = 1;
+                switch (p.rest.data[0]) {
+                case 'T':
+                    scale *= 1024;
+                    // fallthrough
+                case 'G':
+                    scale *= 1024;
+                    // fallthrough
+                case 'M':
+                    scale *= 1024;
+                    // fallthrough
+                case 'K':
+                    scale *= 1024;
+                    // fallthrough
+                case 'b':
+                    if (p.value <= maxof(i64) / scale && p.rest.len == 1) {
+                        memsz = p.value * scale;
+                        break;
+                    }
+                    // fallthrough
+                default:
+                    print(be, S("uuniq: invalid argument: -S: "));
+                    print(be, optarg);
+                    print(be, S("\n"));
+                    flush(be);
+                    return STATUS_CMD;
+                }
+            }
+            break;
+
         case 'u':
             uopt = 1;
             break;
@@ -533,7 +632,6 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         case 'x':
             ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
             ctx->tracemem = !arg[2] || (arg[2] == 'm' && !arg[3]);
-            if (ctx->tracemem) tracemem(ctx, ctx->initialmem);
             if (ctx->traceio || ctx->tracemem) {
                 break;
             }
@@ -590,6 +688,10 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         }
     }
 
+    // Allocate working arena
+    a = uuniq_alloc(ctx, memsz);
+    byte *abeg = a.beg;
+
     // Main loop
     for (Strset *prev = &(Strset){0};;) {
         Arena t = a;
@@ -643,32 +745,23 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     flush(be);
 
     if (ctx->tracemem) {
-        print(be, S("total alloc = "));
-        printu64hex(be, ctx->totalmem);
+        print(be, S("working memory used = "));
+        printu64hex(be, a.beg-abeg);
         print(be, S("\n"));
         flush(be);
     }
     return r;
 }
 
-static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
+static i32 uuniq(i32 argc, u8 **argv, Plt *plt)
 {
-    // Bootstrap a context
+    Mem mem = plt_alloc(plt, 1<<16);
     Arena a  = newarena(0, mem.beg, mem.cap);
-    Uuniq *ctx = a.ctx = new(&a, Uuniq);  // cannot fail (always fits)
+    Uuniq *ctx = a.ctx = new(&a, Uuniq);
     ctx->plt = plt;
-    ctx->initialmem = mem;
-    ctx->totalmem = mem.cap;
 
     i32 r = uuniq_(argc, argv, ctx, a);
-    if (ctx->traceio) {
-        Output *be = ctx->be;
-        print(be, S("exit("));
-        printi64(be, r);
-        print(be, S(") = ?\n"));
-        flush(be);
-    }
-
+    trace_exit(ctx, r);
     return r;
 }
 
@@ -686,6 +779,10 @@ static i32 uuniq(i32 argc, u8 **argv, Plt *plt, Mem mem)
 #include <stdio.h>
 
 struct Plt {
+    // Memory
+    Mem mem;
+    iz allocsz;
+
     // Output
     i64 off;
     Str output;
@@ -700,8 +797,17 @@ struct Plt {
     jmp_buf *oom;  // pointer hides ugly GDB printout
 };
 
-static Mem plt_alloc(Plt *) {
-    affirm(0);
+static Mem plt_alloc(Plt *plt, iz cap) {
+    affirm(cap <= plt->mem.cap);
+    Mem r = plt->mem;
+    plt->mem.beg += cap;
+    plt->mem.cap -= cap;
+    plt->allocsz = cap;
+    return r;
+}
+
+static iz plt_memcap(Plt *plt) {
+    return plt->mem.cap;
 }
 
 static b32 plt_open(Plt *plt, i32 fd, u8 */*path*/, b32 trunc, Arena *)
@@ -768,6 +874,7 @@ static Plt *newtestplt(Arena *a, iz cap)
     plt->oom = new(a, jmp_buf);
     plt->output.data = new(a, u8, cap);
     plt->cap = cap;
+    plt->mem = (Mem){a->beg, a->end-a->beg};
     return plt;
 }
 
@@ -776,7 +883,7 @@ static Plt *newtestplt(Arena *a, iz cap)
         if (!(plt->status = setjmp(*plt->oom))) { \
             char *argv[] = {"uuniq", __VA_ARGS__, 0}; \
             i32 argc = countof(argv) - 1; \
-            plt->status = uuniq(argc, (u8 **)argv, plt, (Mem){a.beg, a.end-a.beg}); \
+            plt->status = uuniq(argc, (u8 **)argv, plt); \
         } \
         affirm(r == plt->status); \
         affirm(r!=STATUS_OK || equals(plt->output, s)); \
@@ -1092,6 +1199,57 @@ static void test_opt_c(Arena scratch)
     );
 }
 
+static void test_opt_S(Arena scratch)
+{
+    puts("TEST: uuniq -S [filename]");
+
+    Arena a   = {0};
+    Plt  *plt = 0;
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-S100K"
+    );
+    affirm(plt->allocsz == 100*1024);
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    plt->mem.cap = 1L << 32;
+    expect(
+        STATUS_OK,
+        S(""),
+        "-S", "128M"
+    );
+    affirm(plt->allocsz == 128*1024*1024);
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    plt->mem.cap = 1L << 32;
+    expect(
+        STATUS_OK,
+        S(""),
+        "-S3G"
+    );
+    affirm(plt->allocsz == 3L*1024*1024*1024);
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    plt->mem.cap = 1L << 42;
+    expect(
+        STATUS_OK,
+        S(""),
+        "-S", "1T"
+    );
+    affirm(plt->allocsz == 1L*1024*1024*1024*1024);
+}
+
 static void test_longlines(Arena scratch)
 {
     puts("TEST: uuniq long lines");
@@ -1116,11 +1274,13 @@ static void test_longlines(Arena scratch)
 
     {
         Arena a  = scratch;
-        Plt *plt = newtestplt(&a, 1<<20);
         Str line = concat(&a, longline, S("\n"));
+        Str input = {0};
         for (i32 i = 1; i <= 10; i++) {
-            plt->input = concat(&a, plt->input, line);
+            input = concat(&a, input, line);
         }
+        Plt *plt = newtestplt(&a, 1<<20);
+        plt->input = input;
         expect(
             STATUS_OK,
             line,
@@ -1130,15 +1290,17 @@ static void test_longlines(Arena scratch)
 
     {
         Arena a  = scratch;
+        Str input = {0};
+        for (i32 i = 1; i <= 10; i++) {
+            input = concat(&a, input, longline);
+        }
+        input = concat(&a, input, S("\n"));
+        Str expected = input;
+        for (i32 i = 1; i <= 10; i++) {
+            input = concat(&a, input, longline);
+        }
         Plt *plt = newtestplt(&a, 1<<20);
-        for (i32 i = 1; i <= 10; i++) {
-            plt->input = concat(&a, plt->input, longline);
-        }
-        plt->input = concat(&a, plt->input, S("\n"));
-        Str expected = plt->input;
-        for (i32 i = 1; i <= 10; i++) {
-            plt->input = concat(&a, plt->input, longline);
-        }
+        plt->input = input;
         expect(
             STATUS_OK,
             expected,
@@ -1148,17 +1310,19 @@ static void test_longlines(Arena scratch)
 
     {
         Arena a  = scratch;
-        Plt *plt = newtestplt(&a, 1<<20);
         Str line = concat(&a, longline, S("\n"));
+        Str input = {0};
         for (i32 i = 0; i < 10; i++) {
             Str l = {line.data+i, line.len-i};
-            plt->input = concat(&a, plt->input, l);
+            input = concat(&a, input, l);
         }
-        Str expected = plt->input;
+        Str expected = input;
         for (i32 i = 9; i >= 0; i--) {
             Str l = {line.data+i, line.len-i};
-            plt->input = concat(&a, plt->input, l);
+            input = concat(&a, input, l);
         }
+        Plt *plt = newtestplt(&a, 1<<20);
+        plt->input = input;
         expect(
             STATUS_OK,
             expected,
@@ -1177,6 +1341,7 @@ int main(void)
     test_opt_u(a);
     test_opt_d_and_u(a);
     test_opt_c(a);
+    test_opt_S(a);
     test_longlines(a);
     puts("all tests passed");
 }
@@ -1193,10 +1358,19 @@ struct Plt {
     Str output;
     i32 outoff;
     i32 cap;
+    Mem mem;
 };
 
-static Mem plt_alloc(Plt *) {
-    affirm(0);
+static Mem plt_alloc(Plt *plt, iz cap) {
+    affirm(cap <= plt->mem.cap);
+    Mem r = plt->mem;
+    plt->mem.beg += cap;
+    plt->mem.cap -= cap;
+    return r;
+}
+
+static iz plt_memcap(Plt *plt) {
+    return plt->mem.cap;
 }
 
 static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
@@ -1318,9 +1492,10 @@ static void test_random(Arena scratch)
                 expectedoutput = concat(&t, expectedoutput, inputlines[i].line);
             }
 
+            plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+            i32 status = uuniq(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1338,9 +1513,10 @@ static void test_random(Arena scratch)
                 expectedoutput = concat(&t, expectedoutput, duplines[i]->line);
             }
 
+            plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-d", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+            i32 status = uuniq(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1360,9 +1536,10 @@ static void test_random(Arena scratch)
                 }
             }
 
+            plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-u", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+            i32 status = uuniq(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1383,9 +1560,10 @@ static void test_random(Arena scratch)
                 expectedoutput = concat(&t, expectedoutput, inputlines[i].line);
             }
 
+            plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-c", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt, (Mem){t.beg, t.end-t.beg});
+            i32 status = uuniq(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1413,12 +1591,12 @@ struct Plt {
     iz  inpos;
     Str output;
     iz  outpos;
+    Mem mem;
 };
 
 static i64 perf_counter(void)
 {
     #ifdef __x86_64__
-        // NOTE: x86_64 not tested yet
         uz hi, lo;
         asm volatile ("rdtscp" : "=d"(hi), "=a"(lo) :: "cx", "memory");
         return (i64)hi<<32 | lo;
@@ -1431,8 +1609,16 @@ static i64 perf_counter(void)
     #endif
 }
 
-static Mem plt_alloc(Plt *) {
-    affirm(0);
+static Mem plt_alloc(Plt *plt, iz cap) {
+    affirm(cap <= plt->mem.cap);
+    Mem r = plt->mem;
+    plt->mem.beg += cap;
+    plt->mem.cap -= cap;
+    return r;
+}
+
+static iz plt_memcap(Plt *plt) {
+    return plt->mem.cap;
 }
 
 static b32  plt_open(Plt *, i32, u8 *, b32, Arena *) { affirm(0); }
@@ -1500,8 +1686,9 @@ static void runbench(char *cmd, Plt *plt, Arena a) {
     i64 best = maxof(i64);
     for (i32 n = 0; n < 1<<9; n++) {
         plt->inpos = 0;
+        plt->mem = (Mem){a.beg, a.end-a.beg};
         i64 total = -perf_counter();
-        i32 r = uuniq(0, 0, plt, (Mem){a.beg, a.end-a.beg});
+        i32 r = uuniq(0, 0, plt);
         affirm(r == STATUS_OK);
         total += perf_counter();
         best = total<best ? total : best;
@@ -1562,11 +1749,9 @@ int main(void)
 struct Plt {
     // Virtual file descriptor table
     int fds[3];
-    iz memcap;
-    iz allocsz;
 };
 
-static iz plt_memcap() {
+static iz plt_memcap(Plt *) {
     // _SC_PHYS_PAGES is not standard, but widely supported: Linux, BSDs and macOS
     iz pages = sysconf(_SC_PHYS_PAGES);
     iz psize = sysconf(_SC_PAGESIZE);
@@ -1585,21 +1770,16 @@ static iz plt_memcap() {
     return cap;
 }
 
-static void plt_exit_oom(Plt *plt) {
-    static const u8 msg[] = "uuniq: not enough memory\n";
-    plt_write(plt, 2, (u8*)msg, countof(msg));
-    plt_exit(plt, STATUS_OOM);
-}
-
-static Mem plt_alloc(Plt *plt) {
+static Mem plt_alloc(Plt *plt, iz cap) {
     Mem r = {0};
-    if (plt->allocsz == plt->memcap)
-        plt_exit_oom(plt);
-    byte *mem = mmap(0, plt->memcap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
-    if (mem == MAP_FAILED)
-        plt_exit_oom(plt);
+    byte *mem = mmap(0, cap, PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    if (mem == MAP_FAILED) {
+        static const u8 msg[] = "uuniq: out of memory\n";
+        plt_write(plt, 2, (u8*)msg, countof(msg));
+        plt_exit(plt, STATUS_OOM);
+    }
     r.beg = mem;
-    r.cap = plt->allocsz = plt->memcap;
+    r.cap = cap;
     return r;
 }
 
@@ -1628,13 +1808,8 @@ static void plt_exit(Plt *, i32 r)
 
 int main(int argc, char **argv)
 {
-    Plt plt = {
-        .fds = {0, 1, 2},
-        .memcap = plt_memcap(),
-        .allocsz = 0
-    };
-    Mem mem = plt_alloc(&plt);
-    return uuniq(argc, (u8 **)argv, &plt, mem);
+    Plt plt = {{0, 1, 2}};
+    return uuniq(argc, (u8 **)argv, &plt);
 }
 
 #endif
