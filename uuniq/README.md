@@ -27,8 +27,6 @@ For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
 - Implement POSIX standard set of `uniq` command-line flags
-- Add limit to memory allocation by querying the platform, if feasible, and a command-line flag for user-defined limit
-  - There is an implementation similar to how BSD sort decides how much memory to use, but it needs more testing on different platforms.
 - Add fuzz testing
 - More optimisation ideas:
   - Store the hash set nodes and the line strings to separate arenas. The hypothesis is that improved locality will speed up the hash set lookups.
