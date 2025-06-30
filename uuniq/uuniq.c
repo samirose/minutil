@@ -1783,10 +1783,10 @@ static iz plt_memcap(Plt *) {
 
     struct rlimit rl;
     if (getrlimit(RLIMIT_DATA, &rl) == 0) {
-        cap = (iz)rl.rlim_cur < cap ? rl.rlim_cur : cap;
+        cap = (iz)rl.rlim_cur < cap ? (iz)rl.rlim_cur : cap;
     }
     if (getrlimit(RLIMIT_RSS, &rl) == 0) {
-        cap = (iz)rl.rlim_cur < cap ? rl.rlim_cur : cap;
+        cap = (iz)rl.rlim_cur < cap ? (iz)rl.rlim_cur : cap;
     }
 
     if (cap < 1<<24) cap = 1<<24;
