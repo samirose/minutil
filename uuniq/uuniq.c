@@ -518,6 +518,9 @@ static void usage(Output *b)
     "  -c            Precede each output line with a count of the number of times the line occurred in the input.\n"
     "  -d            Suppress the writing of lines that are not repeated in the input.\n"
     "  -h            Print this message.\n"
+    "  -S size       Use maximum of size Ki bytes of working memory.\n"
+    "                Size modifiers b,K,M,T can be used. If this option is omitted\n"
+    "                uuniq allocates memory based on system limits or half of RAM.\n"
     "  -u            Suppress the writing of lines that are repeated in the input.\n"
     "  -v            Display version information.\n"
     "  -x[i][m]      Output strace-like log on standard error.\n"
@@ -594,8 +597,13 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
         case 'S':
             optarg = getarg(argc, argv, &argi, be);
             p = parse64(optarg);
-            if (p.rest.len > 0) {
-                i64 scale = 1;
+            i64 scale = 0;
+            switch (p.rest.len) {
+            case 0:
+                scale = 1024;
+                break;
+            case 1:
+                scale = 1;
                 switch (p.rest.data[0]) {
                 case 'T':
                     scale *= 1024;
@@ -610,19 +618,24 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
                     scale *= 1024;
                     // fallthrough
                 case 'b':
-                    if (p.value <= maxof(i64) / scale && p.rest.len == 1) {
-                        memsz = p.value * scale;
+                    if (p.value <= maxof(i64) / scale) {
                         break;
                     }
                     // fallthrough
                 default:
-                    print(be, S("uuniq: invalid argument: -S: "));
-                    print(be, optarg);
-                    print(be, S("\n"));
-                    flush(be);
-                    return STATUS_CMD;
+                    scale = 0;
+                    break;
                 }
+                break;
             }
+            if (scale == 0) {
+                print(be, S("uuniq: invalid argument: -S: "));
+                print(be, optarg);
+                print(be, S("\n"));
+                flush(be);
+                return STATUS_CMD;
+            }
+            memsz = p.value * scale;
             break;
 
         case 'u':
@@ -1215,6 +1228,16 @@ static void test_opt_S(Arena scratch)
         "-S100K"
     );
     affirm(plt->allocsz == 100*1024);
+
+    a   = scratch;
+    plt = newtestplt(&a, 1<<12);
+    plt->input = S("");
+    expect(
+        STATUS_OK,
+        S(""),
+        "-S", "160"
+    );
+    affirm(plt->allocsz == 160*1024);
 
     a   = scratch;
     plt = newtestplt(&a, 1<<12);
