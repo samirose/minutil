@@ -26,6 +26,7 @@ $ cc -O2 -funroll-loops -s -o uuniq uuniq.c && ./inttest
 For other targets, see `randtest` and `bench` in the Makefile.
 
 ## TODO
+- Improve command-line flag parsing and unify error handling, e.g. error on "-hh".
 - Implement POSIX standard set of `uniq` command-line flags
 - Add fuzz testing
 - More optimisation ideas:
