@@ -556,8 +556,8 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
     b32 dopt = 0, uopt = 0, copt = 0;
     i64 memsz = 0;
-    i32 argi = 1;
-    for (i32 done = 0; argi < argc; argi++) {
+    i32 argi = 0;
+    while (++argi < argc) {
         u8 *arg = argv[argi];
         if (arg[0] != '-') {
             break;
@@ -568,29 +568,33 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             Parsed64 p;
 
         case '\0':  // "-" standard input
-            done = 1;
+            goto done;
             break;
 
         case '-':  // "--" end of options
             argi++;
-            done = 1;
+            goto done;
             break;
 
         case 'h':
+            if (arg[2]) goto unknown;
             usage(bo);
             flush(bo);
             return bo->err ? STATUS_OUTPUT : STATUS_OK;
 
         case 'v':
+            if (arg[2]) goto unknown;
             print(bo, S("uuniq " VERSION "\n"));
             flush(bo);
             return bo->err ? STATUS_OUTPUT : STATUS_OK;
 
         case 'c':
+            if (arg[2]) goto unknown;
             copt = 1;
             break;
 
         case 'd':
+            if (arg[2]) goto unknown;
             dopt = 1;
             break;
 
@@ -639,27 +643,33 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             break;
 
         case 'u':
+            if (arg[2]) goto unknown;
             uopt = 1;
             break;
 
         case 'x':
             ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
             ctx->tracemem = !arg[2] || (arg[2] == 'm' && !arg[3]);
-            if (ctx->traceio || ctx->tracemem) {
-                break;
-            }
-            // fallthrough
+            if (!ctx->traceio && !ctx->tracemem)
+                goto unknown;
+            break;
 
         default:
-            print(be, S("uuniq: unknown option "));
-            print(be, import(arg));
-            print(be, S("\n"));
-            usage(be);
-            flush(be);
-            return STATUS_CMD;
+            goto unknown;
         }
 
-        if (done) break;  // without incrementing argi
+        continue;
+
+        done:
+        break;
+
+        unknown:
+        print(be, S("uuniq: unknown option "));
+        print(be, import(arg));
+        print(be, S("\n"));
+        usage(be);
+        flush(be);
+        return STATUS_CMD;
     }
 
     Str inpath = {0};

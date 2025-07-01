@@ -243,11 +243,14 @@ EXPECTED="uuniq: invalid argument: -S: bar"
 checkeq "$TEST" "$EXPECTED"
 
 echo "uuniq <unknown option>"
-TEST=$(./uuniq -xyz 2>&1)
+TEST=$(./uuniq -ux 2>&1)
 checkeq $? 1
-TEST=$(echo "$TEST" | grep "Usage:")
+TEST1=$(echo "$TEST" | grep "uuniq: unknown option")
+EXPECTED="uuniq: unknown option -ux"
+checkeq "$TEST1" "$EXPECTED"
+TEST2=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
-checkeq "$TEST" "$EXPECTED"
+checkeq "$TEST2" "$EXPECTED"
 
 TMPOUT_UUNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uuniq.XXXXXX")
 TMPOUT_UNIQ=$(mktemp /tmp/"${TMPFILEBASE}-out-uniq.XXXXXX")
