@@ -100,32 +100,35 @@ static u8 lohex[16] = "0123456789abcdef";
 static void tracemem(Uuniq *ctx, Mem mem);
 
 struct Arena {
-    Uuniq  *ctx;
     byte *beg;
     byte *end;
+    Uuniq  *ctx;
 };
 
 static Arena newarena(Uuniq *ctx, byte *mem, iz cap) {
-    return (Arena){ctx, mem, mem+cap};
+    return (Arena){mem, mem+cap, ctx};
 }
 
-static void oom(Arena *a)
+static void oom(Uuniq *ctx)
 {
-    Uuniq *ctx = a->ctx;
     print(ctx->be, S("uuniq: out of memory\n"));
     flush(ctx->be);
     uuniq_exit(ctx, STATUS_OOM);
 }
 
 enum {
-    NOZERO = 1
+    NOZERO = 1,
+    SOFTFAIL = 2
 };
 
 static void *alloc(Arena *a, iz size, iz align, iz count, u8 flags)
 {
     iz pad = -(uz)a->beg & (align - 1);
-    if (count >= (a->end - a->beg - pad)/size) {
-        oom(a);
+    if (count > (a->end - a->beg - pad)/size) {
+        if (flags & SOFTFAIL) {
+            return 0;
+        }
+        oom(a->ctx);
     }
     byte *r = a->beg + pad;
     a->beg += pad + count*size;
@@ -1368,7 +1371,7 @@ int main(void)
 {
     i32   cap = 1<<24;
     byte *mem = malloc(cap);
-    Arena a   = {0, mem, mem+cap};
+    Arena a   = {mem, mem+cap, 0};
     test_basic(a);
     test_opt_d(a);
     test_opt_u(a);
@@ -1608,7 +1611,7 @@ int main(void)
 {
     i32   cap = 1<<24;
     byte *mem = malloc(cap);
-    Arena a   = {0, mem, mem+cap};
+    Arena a   = {mem, mem+cap, 0};
     test_random(a);
     puts("all tests passed");
 }
@@ -1733,7 +1736,7 @@ int main(void)
 {
     i32   cap = 1<<24;
     byte *mem = malloc(cap);
-    Arena a   = {0, mem, mem+cap};
+    Arena a   = {mem, mem+cap, 0};
     memset(mem, 0xa5, cap);  // pre-commit whole arena
 
     puts("uuniq: BENCH");
