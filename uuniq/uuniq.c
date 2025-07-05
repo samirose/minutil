@@ -716,22 +716,35 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
     // Allocate working arena
     a = uuniq_alloc(ctx, memsz);
-    byte *abeg = a.beg;
+    // Initial arena for Strset nodes
+    iz sasz = 4095/3*sizeof(Strset); // n=5 full levels of Strset: (4^(n+1)-1)/3
+    Arena sa = { a.beg, a.beg+sasz, a.ctx };
+    u8 saflags = SOFTFAIL;
+    byte *sabeg = sa.beg;
+    // Text arena for unique input lines
+    Arena ta = { sa.end, a.end, a.ctx };
+    byte *tabeg = ta.beg;
 
     // Main loop
     for (Strset *prev = &(Strset){0};;) {
-        Arena t = a;
-        Inputline line = nextline(bi, &t);
+        Arena ts = ta;
+        Inputline line = nextline(bi, &ts);
         if (!line.text.len && bi->eof) {
             break;
         }
         Strset **entry = lookup(&lineset, line.text);
         if (!*entry) { // Initially seen line
-            *entry = new(&t, Strset);
-            (*entry)->str = line.inbuf ? clone(&t, line.text) : line.text;
+            if (saflags) {
+                *entry = new(&sa, Strset, 1, saflags);
+                if (!*entry) saflags = 0;
+            }
+            if (!saflags) {
+                *entry = new(&ts, Strset, 1, saflags);
+            }
+            (*entry)->str = line.inbuf ? clone(&ts, line.text) : line.text;
             prev->next = *entry;
             prev = *entry;
-            a = t; // Save the line and entry
+            ta = ts; // Keep the line
         }
         ++(*entry)->count;
         if (copt || uopt)
@@ -772,7 +785,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
     if (ctx->tracemem) {
         print(be, S("working memory used = "));
-        printu64hex(be, a.beg-abeg);
+        printu64hex(be, sa.beg-sabeg + ta.beg-tabeg);
         print(be, S("\n"));
         flush(be);
     }
