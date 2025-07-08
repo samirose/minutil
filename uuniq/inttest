@@ -124,16 +124,15 @@ world!"
 checkeq "$TEST" "$EXPECTED"
 
 echo "uuniq -- marks end of options"
-./uuniq "$TMPIN" "$TMPOUT"
+./uuniq -d -- "$TMPIN" "$TMPOUT"
 checkeq $? 0
 TEST=$(cat "$TMPOUT")
-EXPECTED="Hello
-world!"
+EXPECTED="Hello"
 checkeq "$TEST" "$EXPECTED"
 rm "$TMPIN"
 rm "$TMPOUT"
 
-# Check uuniq overwrites output file
+echo "uuniq overwrites output file contents"
 echo "Not the expected output" > "$TMPOUT"
 ./uuniq <<ENDS - "$TMPOUT"
 Expected output
@@ -168,17 +167,17 @@ checkeq $? 0
 EXPECTED="world!"
 checkeq "$TEST" "$EXPECTED"
 
-echo "uuniq -d -u output should be empty"
-TEST=$(./uuniq -d -u /dev/null)
+echo "uuniq -du output should be empty"
+TEST=$(./uuniq -du /dev/null)
 checkeq $? 0
 EXPECTED=""
 checkeq "$TEST" "$EXPECTED"
 
-TEST=$(./uuniq -u -d /dev/null)
+TEST=$(./uuniq -ud /dev/null)
 checkeq $? 0
 checkeq "$TEST" "$EXPECTED"
 
-TEST="$(./uuniq <<ENDS -d -u
+TEST="$(./uuniq <<ENDS -du
 Hello
 world!
 Hello
@@ -188,7 +187,7 @@ ENDS
 checkeq $? 0
 checkeq "$TEST" "$EXPECTED"
 
-TEST="$(./uuniq <<ENDS -u -d
+TEST="$(./uuniq <<ENDS -ud
 Hello
 world!
 Hello
@@ -243,10 +242,10 @@ EXPECTED="uuniq: invalid argument: -S: bar"
 checkeq "$TEST" "$EXPECTED"
 
 echo "uuniq <unknown option>"
-TEST=$(./uuniq -ux 2>&1)
+TEST=$(./uuniq -uz 2>&1)
 checkeq $? 1
 TEST1=$(echo "$TEST" | grep "uuniq: unknown option")
-EXPECTED="uuniq: unknown option -ux"
+EXPECTED="uuniq: unknown option -uz"
 checkeq "$TEST1" "$EXPECTED"
 TEST2=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"

@@ -520,12 +520,12 @@ static void usage(Output *b)
     "Usage: uuniq [options] [INPATH [OUTPATH]]\n"
     "  -c            Precede each output line with a count of the number of times the line occurred in the input.\n"
     "  -d            Suppress the writing of lines that are not repeated in the input.\n"
-    "  -h            Print this message.\n"
+    "  -h            Output this message.\n"
     "  -S size       Use maximum of size Ki bytes of working memory.\n"
     "                Size modifiers b,K,M,T can be used. If this option is omitted\n"
     "                uuniq allocates memory based on system limits or half of RAM.\n"
     "  -u            Suppress the writing of lines that are repeated in the input.\n"
-    "  -v            Display version information.\n"
+    "  -v            Output version information.\n"
     "  -x[i][m]      Output strace-like log on standard error.\n"
     "                [-xi for I/O only, -xm for memory allocations only]\n";
     print(b, S(usage_text));
@@ -559,120 +559,119 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
 
     b32 dopt = 0, uopt = 0, copt = 0;
     i64 memsz = 0;
-    i32 argi = 0;
-    while (++argi < argc) {
+    i32 argi = 1;
+    for (b32 done = 0; argi < argc; argi++) {
         u8 *arg = argv[argi];
         if (arg[0] != '-') {
             break;
         }
 
-        switch (arg[1]) {
+        i32 ci = 1;
+        switch (arg[ci]) {
             Str optarg;
             Parsed64 p;
 
         case '\0':  // "-" standard input
-            goto done;
+            done = 1;
             break;
 
         case '-':  // "--" end of options
             argi++;
-            goto done;
-            break;
-
-        case 'h':
-            if (arg[2]) goto unknown;
-            usage(bo);
-            flush(bo);
-            return bo->err ? STATUS_OUTPUT : STATUS_OK;
-
-        case 'v':
-            if (arg[2]) goto unknown;
-            print(bo, S("uuniq " VERSION "\n"));
-            flush(bo);
-            return bo->err ? STATUS_OUTPUT : STATUS_OK;
-
-        case 'c':
-            if (arg[2]) goto unknown;
-            copt = 1;
-            break;
-
-        case 'd':
-            if (arg[2]) goto unknown;
-            dopt = 1;
-            break;
-
-        case 'S':
-            optarg = getarg(argc, argv, &argi, be);
-            p = parse64(optarg);
-            i64 scale = 0;
-            switch (p.rest.len) {
-            case 0:
-                scale = 1024;
-                break;
-            case 1:
-                scale = 1;
-                switch (p.rest.data[0]) {
-                case 'T':
-                    scale *= 1024;
-                    // fallthrough
-                case 'G':
-                    scale *= 1024;
-                    // fallthrough
-                case 'M':
-                    scale *= 1024;
-                    // fallthrough
-                case 'K':
-                    scale *= 1024;
-                    // fallthrough
-                case 'b':
-                    if (p.value <= maxof(i64) / scale) {
-                        break;
-                    }
-                    // fallthrough
-                default:
-                    scale = 0;
-                    break;
-                }
-                break;
-            }
-            if (scale == 0) {
-                print(be, S("uuniq: invalid argument: -S: "));
-                print(be, optarg);
-                print(be, S("\n"));
-                flush(be);
-                return STATUS_CMD;
-            }
-            memsz = p.value * scale;
-            break;
-
-        case 'u':
-            if (arg[2]) goto unknown;
-            uopt = 1;
-            break;
-
-        case 'x':
-            ctx->traceio = !arg[2] || (arg[2] == 'i' && !arg[3]);
-            ctx->tracemem = !arg[2] || (arg[2] == 'm' && !arg[3]);
-            if (!ctx->traceio && !ctx->tracemem)
-                goto unknown;
+            done = 1;
             break;
 
         default:
-            goto unknown;
+            do {
+                b32 unknown = 0;
+                switch (arg[ci++]) {
+                case 'h':
+                    usage(bo);
+                    flush(bo);
+                    return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+                case 'v':
+                    print(bo, S("uuniq " VERSION "\n"));
+                    flush(bo);
+                    return bo->err ? STATUS_OUTPUT : STATUS_OK;
+
+                case 'c':
+                    copt = 1;
+                    break;
+
+                case 'd':
+                    dopt = 1;
+                    break;
+
+                case 'S':
+                    optarg = getarg(argc, argv, &argi, be);
+                    p = parse64(optarg);
+                    i64 scale = 0;
+                    switch (p.rest.len) {
+                    case 0:
+                        scale = 1024;
+                        break;
+                    case 1:
+                        scale = 1;
+                        switch (p.rest.data[0]) {
+                        case 'T':
+                            scale *= 1024;
+                            // fallthrough
+                        case 'G':
+                            scale *= 1024;
+                            // fallthrough
+                        case 'M':
+                            scale *= 1024;
+                            // fallthrough
+                        case 'K':
+                            scale *= 1024;
+                            // fallthrough
+                        case 'b':
+                            if (p.value <= maxof(i64) / scale) {
+                                break;
+                            }
+                            // fallthrough
+                        default:
+                            scale = 0;
+                            break;
+                        }
+                        break;
+                    }
+                    if (scale == 0) {
+                        print(be, S("uuniq: invalid argument: -S: "));
+                        print(be, optarg);
+                        print(be, S("\n"));
+                        flush(be);
+                        return STATUS_CMD;
+                    }
+                    memsz = p.value * scale;
+                    break;
+
+                case 'u':
+                    uopt = 1;
+                    break;
+
+                case 'x':
+                    ctx->traceio = !arg[ci] || (arg[ci] == 'i' && !arg[ci+1]);
+                    ctx->tracemem = !arg[ci] || (arg[ci] == 'm' && !arg[ci+1]);
+                    if (!ctx->traceio && !ctx->tracemem)
+                        unknown = 1;
+                    break;
+
+                default:
+                    unknown = 1;
+                    break;
+                }
+                if (unknown) {
+                    print(be, S("uuniq: unknown option "));
+                    print(be, import(arg));
+                    print(be, S("\n"));
+                    usage(be);
+                    flush(be);
+                    return STATUS_CMD;
+                }
+            } while (arg[ci] != '\0');
         }
-
-        continue;
-
-        done:
-        break;
-
-        unknown:
-        print(be, S("uuniq: unknown option "));
-        print(be, import(arg));
-        print(be, S("\n"));
-        usage(be);
-        flush(be);
-        return STATUS_CMD;
+        if (done) break;
     }
 
     Str inpath = {0};
