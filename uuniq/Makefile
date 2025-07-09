@@ -9,12 +9,15 @@ CDEVFLAGS = -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter 
             -Wno-unused-function -Wno-sign-conversion -Wno-c23-extensions
 CFLAGS    =
 LDLIBS    =
-BINS      = uuniq uuniq_test uuniq_randtest uuniq_bench
+BINS      = uuniq uuniq_dbg uuniq_test uuniq_randtest uuniq_bench
 
 all: $(BINS)
 
 uuniq: uuniq.c
 	$(CC) $(COPTFLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
+
+uuniq_dbg: uuniq.c
+	$(CC) $(CDBGFLAGS) $(CDEVFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 test: uuniq_test
 	./uuniq_test
