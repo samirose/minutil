@@ -81,8 +81,7 @@ static void flush(Output *);
 typedef struct Uuniq {
     Plt    *plt;
     Output *be;
-    b32     traceio;
-    b32     tracemem;
+    u32 flags;
 } Uuniq;
 
 // Main program
@@ -93,6 +92,16 @@ enum {
     STATUS_INPUT    = 2,
     STATUS_OUTPUT   = 3,
     STATUS_OOM      = 6,
+};
+
+enum Flags {
+    OPT_c  = 1 << 0,
+    OPT_d  = 1 << 1,
+    OPT_h  = 1 << 2,
+    OPT_u  = 1 << 3,
+    OPT_v  = 1 << 4,
+    OPT_xi = 1 << 5,
+    OPT_xm = 1 << 6,
 };
 
 static u8 lohex[16] = "0123456789abcdef";
@@ -184,7 +193,7 @@ static Str concat(Arena *a, Str head, Str tail)
 static Arena uuniq_alloc(Uuniq *ctx, iz cap) {
     Mem mem = plt_alloc(ctx->plt, cap ? cap : plt_memcap(ctx->plt));
     Arena a = newarena(ctx, mem.beg, mem.cap);
-    if (!ctx->tracemem) {
+    if (!(ctx->flags & OPT_xm)) {
         return a;
     }
 
@@ -207,7 +216,7 @@ typedef struct {
 
 static b32 uuniq_open(Uuniq *ctx, i32 fd, u8 *path, b32 trunc, Arena *a) {
     b32 r = plt_open(ctx->plt, fd, path, trunc, a);
-    if (!ctx->traceio) {
+    if (!(ctx->flags & OPT_xi)) {
         return r;
     }
 
@@ -238,7 +247,7 @@ static b32 uuniq_open(Uuniq *ctx, i32 fd, u8 *path, b32 trunc, Arena *a) {
 
 static i32 uuniq_read(Uuniq *ctx, u8 *buf, i32 len) {
     i32 r = plt_read(ctx->plt, buf, len);
-    if (!ctx->traceio) {
+    if (!(ctx->flags & OPT_xi)) {
         return r;
     }
 
@@ -255,7 +264,7 @@ static i32 uuniq_read(Uuniq *ctx, u8 *buf, i32 len) {
 static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
 {
     b32 r = plt_write(ctx->plt, fd, buf, len);
-    if (!ctx->traceio || fd==2) {
+    if (!(ctx->flags & OPT_xi) || fd==2) {
         return r;
     }
 
@@ -280,7 +289,7 @@ static b32 uuniq_write(Uuniq *ctx, i32 fd, u8 *buf, i32 len)
 }
 
 static void trace_exit(Uuniq *ctx, i32 r) {
-    if (ctx->traceio) {
+    if (ctx->flags & OPT_xi) {
         Output *be = ctx->be;
         print(be, S("exit("));
         printi64(be, r);
@@ -549,63 +558,64 @@ static Str getarg(i32 argc, u8 **argv, i32 *i, Output *be)
     return r;
 }
 
-static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
-    i32 r = STATUS_OK;
-    Input *bi = newinput(&a, ctx);
-    Strset *lineset = 0;
-    Output *bo = newoutput(&a, 1, ctx);
-    Output *be = newoutput(&a, 2, ctx);
-    ctx->be = be;
+typedef struct {
+    Str inpath;
+    Str outpath;
+    iz  memsz;
+    u32 flags;
+    i32 status;
+} Opts;
 
-    b32 dopt = 0, uopt = 0, copt = 0;
-    i64 memsz = 0;
+static Opts getopts(i32 argc, u8 **argv, Output *be) {
+    Opts r = {0};
+    r.status = STATUS_CMD;
     i32 argi = 1;
-    for (b32 done = 0; argi < argc; argi++) {
+
+    for (; argi < argc; argi++) {
+        i32 ci = 0;
         u8 *arg = argv[argi];
-        if (arg[0] != '-') {
+        if (arg[ci++] != '-') {
             break;
         }
 
-        i32 ci = 1;
         switch (arg[ci]) {
-            Str optarg;
-            Parsed64 p;
-
         case '\0':  // "-" standard input
-            done = 1;
-            break;
+            goto done;
 
         case '-':  // "--" end of options
-            argi++;
-            done = 1;
-            break;
+            if (!arg[ci+1]) {
+                argi++;
+                goto done;
+            } else {
+                goto unknown;
+            }
 
         default:
             do {
-                b32 unknown = 0;
                 switch (arg[ci++]) {
+                    Str optarg;
+                    Parsed64 p;
+
                 case 'h':
-                    usage(bo);
-                    flush(bo);
-                    return bo->err ? STATUS_OUTPUT : STATUS_OK;
+                    r.flags |= OPT_h;
+                    break;
 
                 case 'v':
-                    print(bo, S("uuniq " VERSION "\n"));
-                    flush(bo);
-                    return bo->err ? STATUS_OUTPUT : STATUS_OK;
+                    r.flags |= OPT_v;
+                    break;
 
                 case 'c':
-                    copt = 1;
+                    r.flags |= OPT_c;
                     break;
 
                 case 'd':
-                    dopt = 1;
+                    r.flags |= OPT_d;
                     break;
 
                 case 'S':
                     optarg = getarg(argc, argv, &argi, be);
                     p = parse64(optarg);
-                    i64 scale = 0;
+                    iz scale = 0;
                     switch (p.rest.len) {
                     case 0:
                         scale = 1024;
@@ -626,7 +636,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
                             scale *= 1024;
                             // fallthrough
                         case 'b':
-                            if (p.value <= maxof(i64) / scale) {
+                            if (p.value <= maxof(iz) / scale) {
                                 break;
                             }
                             // fallthrough
@@ -641,72 +651,120 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
                         print(be, optarg);
                         print(be, S("\n"));
                         flush(be);
-                        return STATUS_CMD;
+                        return r;
                     }
-                    memsz = p.value * scale;
-                    break;
+                    r.memsz = p.value * scale;
+                    goto nextarg;
 
                 case 'u':
-                    uopt = 1;
+                    r.flags |= OPT_u;
                     break;
 
                 case 'x':
-                    ctx->traceio = !arg[ci] || (arg[ci] == 'i' && !arg[ci+1]);
-                    ctx->tracemem = !arg[ci] || (arg[ci] == 'm' && !arg[ci+1]);
-                    if (!ctx->traceio && !ctx->tracemem)
-                        unknown = 1;
+                    switch (arg[ci]) {
+                    case '\0':
+                        r.flags |= OPT_xi | OPT_xm;
+                        break;
+                    case 'i':
+                        r.flags |= OPT_xi;
+                        ci++;
+                        break;
+                    case 'm':
+                        r.flags |= OPT_xm;
+                        ci++;
+                        break;
+                    default:
+                        goto unknown;
+                    }
+                    if (arg[ci] != '\0') {
+                        goto unknown;
+                    }
                     break;
 
                 default:
-                    unknown = 1;
-                    break;
-                }
-                if (unknown) {
-                    print(be, S("uuniq: unknown option "));
-                    print(be, import(arg));
-                    print(be, S("\n"));
-                    usage(be);
-                    flush(be);
-                    return STATUS_CMD;
+                    goto unknown;
                 }
             } while (arg[ci] != '\0');
         }
-        if (done) break;
+
+        nextarg:
+        continue;
+
+        unknown:
+        print(be, S("uuniq: unknown option -- "));
+        print(be, import(arg));
+        print(be, S("\n"));
+        usage(be);
+        flush(be);
+        return r;
+
+        done:
+        break;
     }
 
-    Str inpath = {0};
-    Str outpath = {0};
     switch (argc - argi) {
-        case  2:
-            outpath = import(argv[argi+1]);
-            // fallthrough
-        case  1:
-            inpath = import(argv[argi+0]);
-            break;
-        case  0:
-        case -1:
-            break;
-        default:
-            print(be, S("uuniq: too many arguments\n"));
-            usage(be);
-            flush(be);
-            return STATUS_CMD;
-        }
+    case  2:
+        r.outpath = import(argv[argi+1]);
+        // fallthrough
+    case  1:
+        r.inpath = import(argv[argi+0]);
+        break;
+    case  0:
+    case -1:
+        break;
+    default:
+        print(be, S("uuniq: too many arguments\n"));
+        usage(be);
+        flush(be);
+        return r;
+    }
 
-    if (inpath.data && !equals(inpath, S("-"))) {
-        if (!uuniq_open(ctx, 0, inpath.data, 0, &a)) {
+    r.status = STATUS_OK;
+    return r;
+}
+
+static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
+    i32 r = STATUS_OK;
+    Input *bi = newinput(&a, ctx);
+    Strset *lineset = 0;
+    Output *bo = newoutput(&a, 1, ctx);
+    Output *be = newoutput(&a, 2, ctx);
+    Opts opts = getopts(argc, argv, be);
+    ctx->be = be;
+    ctx->flags = opts.flags;
+
+    if (opts.status != STATUS_OK) {
+        return opts.status;
+    }
+
+    if (opts.flags & OPT_v) {
+        print(bo, S("uuniq " VERSION "\n"));
+        flush(bo);
+    }
+
+    if (opts.flags & OPT_h) {
+        usage(bo);
+        flush(bo);
+    }
+
+    if (opts.flags & (OPT_h | OPT_v)) {
+        return bo->err ? STATUS_OUTPUT : STATUS_OK;
+    }
+
+    if (opts.inpath.len && !equals(opts.inpath, S("-"))) {
+        if (!uuniq_open(ctx, 0, opts.inpath.data, 0, &a)) {
             print(be, S("uuniq: error opening input file: "));
-            print(be, inpath);
+            print(be, opts.inpath);
             print(be, S("\n"));
             flush(be);
             return STATUS_INPUT;
         }
     }
 
-    if (outpath.data && !equals(outpath, S("-"))) {
-        if (!uuniq_open(ctx, 1, outpath.data, 1, &a)) {
+    if (opts.outpath.len && !equals(opts.outpath, S("-"))) {
+        if (!uuniq_open(ctx, 1, opts.outpath.data, 1, &a)) {
             print(be, S("uuniq: error opening output file: "));
-            print(be, outpath);
+            print(be, opts.outpath);
             print(be, S("\n"));
             flush(be);
             return STATUS_INPUT;
@@ -714,7 +772,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     }
 
     // Allocate working arena
-    a = uuniq_alloc(ctx, memsz);
+    a = uuniq_alloc(ctx, opts.memsz);
     byte *abeg = a.beg;
 
     // Main loop
@@ -733,25 +791,25 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
             a = t; // Save the line and entry
         }
         ++(*entry)->count;
-        if (copt || uopt)
+        if (opts.flags & (OPT_c | OPT_u))
             continue;
         switch ((*entry)->count) {
         case 1:  // Initially seen line
-            if (!dopt) writeline(bo, line.text);
+            if (!(opts.flags & OPT_d)) writeline(bo, line.text);
             break;
         case 2: // First detected duplicate line
-            if (dopt) writeline(bo, line.text);
+            if (opts.flags & OPT_d) writeline(bo, line.text);
             break;
         default:
             break;
         }
     }
 
-    if (copt || uopt) {
+    if (opts.flags & (OPT_c | OPT_u)) {
         for (Strset *entry = lineset; entry; entry = entry->next) {
-            if ((uopt && entry->count != 1) || (dopt && entry->count == 1))
+            if ((opts.flags & OPT_u && entry->count != 1) || (opts.flags & OPT_d && entry->count == 1))
                 continue;
-            if (copt) {
+            if (opts.flags & OPT_c) {
                 printi64(bo, entry->count);
                 printu8(bo, ' ');
             }
@@ -769,7 +827,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     }
     flush(be);
 
-    if (ctx->tracemem) {
+    if (opts.flags & OPT_xm) {
         print(be, S("working memory used = "));
         printu64hex(be, a.beg-abeg);
         print(be, S("\n"));
