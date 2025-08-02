@@ -245,7 +245,7 @@ echo "uuniq <unknown option>"
 TEST=$(./uuniq -uz 2>&1)
 checkeq $? 1
 TEST1=$(echo "$TEST" | grep "uuniq: unknown option")
-EXPECTED="uuniq: unknown option -uz"
+EXPECTED="uuniq: unknown option -- -uz"
 checkeq "$TEST1" "$EXPECTED"
 TEST2=$(echo "$TEST" | grep "Usage:")
 EXPECTED="Usage: uuniq [options] [INPATH [OUTPATH]]"
