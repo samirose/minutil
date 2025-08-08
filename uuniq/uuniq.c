@@ -566,7 +566,8 @@ typedef struct {
     i32 status;
 } Opts;
 
-static Opts getopts(i32 argc, u8 **argv, Output *be) {
+static Opts getopts(i32 argc, u8 **argv, Output *be)
+{
     Opts r = {0};
     r.status = STATUS_CMD;
     i32 argi = 1;
@@ -723,10 +724,58 @@ static Opts getopts(i32 argc, u8 **argv, Output *be) {
     return r;
 }
 
-static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
+static Strset *recordline(Strset **lineset, Strset **prev, Input *bi, Arena *a)
+{
+    Arena t = *a;
+    Inputline line = nextline(bi, &t);
+    if (!line.text.len && bi->eof) {
+        return 0;
+    }
+    Strset **entry = lookup(lineset, line.text);
+    if (!*entry) { // Initially seen line
+        *entry = new(&t, Strset);
+        (*entry)->str = line.inbuf ? clone(&t, line.text) : line.text;
+        (*prev)->next = *entry;
+        *prev = *entry;
+        *a = t; // Save the line and entry
+    }
+    ++(*entry)->count;
+    return *entry;
+}
+
+static void processlines(Input *bi, Output *bo, u32 flags, Arena *a)
+{
+    Strset *lineset = 0;
+    Strset *prev = &(Strset){0};
+    if (flags & (OPT_c | OPT_u)) {
+        while(recordline(&lineset, &prev, bi, a)) {}
+        for (Strset *entry = lineset; entry; entry = entry->next) {
+            if ((flags & OPT_u && entry->count != 1) || (flags & OPT_d && entry->count == 1))
+                continue;
+            if (flags & OPT_c) {
+                printi64(bo, entry->count);
+                printu8(bo, ' ');
+            }
+            writeline(bo, entry->str);
+        }
+    } else {
+        Strset *entry;
+        if (flags & OPT_d) {
+            while (!!(entry = recordline(&lineset, &prev, bi, a))) {
+                if (entry->count == 2) writeline(bo, entry->str);
+            }
+        } else {
+            while (!!(entry = recordline(&lineset, &prev, bi, a))) {
+                if (entry->count == 1) writeline(bo, entry->str);
+            }
+        }
+    }
+}
+
+static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a)
+{
     i32 r = STATUS_OK;
     Input *bi = newinput(&a, ctx);
-    Strset *lineset = 0;
     Output *bo = newoutput(&a, 1, ctx);
     Output *be = newoutput(&a, 2, ctx);
     Opts opts = getopts(argc, argv, be);
@@ -775,47 +824,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a) {
     a = uuniq_alloc(ctx, opts.memsz);
     byte *abeg = a.beg;
 
-    // Main loop
-    for (Strset *prev = &(Strset){0};;) {
-        Arena t = a;
-        Inputline line = nextline(bi, &t);
-        if (!line.text.len && bi->eof) {
-            break;
-        }
-        Strset **entry = lookup(&lineset, line.text);
-        if (!*entry) { // Initially seen line
-            *entry = new(&t, Strset);
-            (*entry)->str = line.inbuf ? clone(&t, line.text) : line.text;
-            prev->next = *entry;
-            prev = *entry;
-            a = t; // Save the line and entry
-        }
-        ++(*entry)->count;
-        if (opts.flags & (OPT_c | OPT_u))
-            continue;
-        switch ((*entry)->count) {
-        case 1:  // Initially seen line
-            if (!(opts.flags & OPT_d)) writeline(bo, line.text);
-            break;
-        case 2: // First detected duplicate line
-            if (opts.flags & OPT_d) writeline(bo, line.text);
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (opts.flags & (OPT_c | OPT_u)) {
-        for (Strset *entry = lineset; entry; entry = entry->next) {
-            if ((opts.flags & OPT_u && entry->count != 1) || (opts.flags & OPT_d && entry->count == 1))
-                continue;
-            if (opts.flags & OPT_c) {
-                printi64(bo, entry->count);
-                printu8(bo, ' ');
-            }
-            writeline(bo, entry->str);
-        }
-    }
+    processlines(bi, bo, opts.flags, &a);
 
     flush(bo);
     if (bo->err) {
