@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VERSION "2025-06-26"
+#define VERSION "2025-08-09"
 
 typedef uint8_t     u8;
 typedef int32_t     b32;
