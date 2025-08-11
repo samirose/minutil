@@ -148,7 +148,7 @@ static Str import(u8 *s)
 {
     Str r = {0};
     r.data = s;
-    for (; r.data[r.len]; r.len++) {}
+    for (; r.data[r.len]; r.len++);
     return r;
 }
 
@@ -343,7 +343,7 @@ static Inputline nextline(Input *b, Arena *a)
         }
 
         i32 cut = b->off;
-        for (; cut<b->len && b->buf[cut]!='\n'; cut++) {}
+        for (; cut<b->len && b->buf[cut]!='\n'; cut++);
         b32 found = cut < b->len;
 
         Str tail  = {0};
@@ -748,7 +748,7 @@ static void processlines(Input *bi, Output *bo, u32 flags, Arena *a)
     Strset *lineset = 0;
     Strset *prev = &(Strset){0};
     if (flags & (OPT_c | OPT_u)) {
-        while(recordline(&lineset, &prev, bi, a)) {}
+        while(recordline(&lineset, &prev, bi, a));
         for (Strset *entry = lineset; entry; entry = entry->next) {
             if ((flags & OPT_u && entry->count != 1) || (flags & OPT_d && entry->count == 1))
                 continue;
@@ -1558,7 +1558,7 @@ static void test_random(Arena scratch)
             fill_randomchars(linebuf, &rng);
             linebuf.data[linebuf.len++] = '\n';
             i32 i = 0;
-            for (; i < l && !equals(inputlines[i].line, linebuf); i++) {}
+            for (; i < l && !equals(inputlines[i].line, linebuf); i++);
             if (i == l) {
                 // line was unique, save it and commit it to the expected output
                 inputlines[l].line = clone(&a, linebuf);
@@ -1572,7 +1572,7 @@ static void test_random(Arena scratch)
         Str input = {0};
         for (i32 l = 0; l < uniqlines;) {
             i32 i = randrange(&rng, 0, l+1);
-            for (; !inputlines[i].repeats; i++) {}
+            for (; !inputlines[i].repeats; i++);
             affirm(i <= l);
             input = concat(&a, input, inputlines[i].line);
             inputlines[i].repeats--;
