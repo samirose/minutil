@@ -3,7 +3,7 @@
 .PHONY: all test randtest inttest bench clean
 
 CC        = cc
-COPTFLAGS = -O3 -funroll-loops
+COPTFLAGS = -O2 -funroll-loops
 CDBGFLAGS = -g3 -fsanitize=undefined -fsanitize-trap
 CDEVFLAGS = -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter \
             -Wno-unused-function -Wno-sign-conversion -Wno-c23-extensions
