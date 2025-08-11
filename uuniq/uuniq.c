@@ -106,8 +106,6 @@ enum Flags {
 
 static u8 lohex[16] = "0123456789abcdef";
 
-static void tracemem(Uuniq *ctx, Mem mem);
-
 struct Arena {
     byte *beg;
     byte *end;
