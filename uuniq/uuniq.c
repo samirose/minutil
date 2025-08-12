@@ -51,7 +51,7 @@ static b32   uuniq_open(Uuniq *, i32, u8 *, b32, Arena *);
 static i32   uuniq_read(Uuniq *, u8 *, i32);
 static b32   uuniq_write(Uuniq *, i32, u8 *, i32);
 static void  uuniq_exit(Uuniq *, i32);
-static i32   uuniq(i32, u8 **, Plt *);
+static i32   uuniq_main(i32, u8 **, Plt *);
 
 #define countof(a)      (iz)(sizeof(a) / sizeof(*(a)))
 #define affirm(c)       while (!(c)) __builtin_unreachable()
@@ -770,9 +770,14 @@ static void processlines(Input *bi, Output *bo, u32 flags, Arena *a)
     }
 }
 
-static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a)
+static i32 uuniq_main(i32 argc, u8 **argv, Plt *plt)
 {
     i32 r = STATUS_OK;
+
+    Mem mem = plt_alloc(plt, 1<<16);
+    Arena a  = newarena(0, mem.beg, mem.cap);
+    Uuniq *ctx = a.ctx = new(&a, Uuniq);
+    ctx->plt = plt;
     Input *bi = newinput(&a, ctx);
     Output *bo = newoutput(&a, 1, ctx);
     Output *be = newoutput(&a, 2, ctx);
@@ -840,17 +845,7 @@ static i32 uuniq_(i32 argc, u8 **argv, Uuniq *ctx, Arena a)
         print(be, S("\n"));
         flush(be);
     }
-    return r;
-}
 
-static i32 uuniq(i32 argc, u8 **argv, Plt *plt)
-{
-    Mem mem = plt_alloc(plt, 1<<16);
-    Arena a  = newarena(0, mem.beg, mem.cap);
-    Uuniq *ctx = a.ctx = new(&a, Uuniq);
-    ctx->plt = plt;
-
-    i32 r = uuniq_(argc, argv, ctx, a);
     trace_exit(ctx, r);
     return r;
 }
@@ -973,7 +968,7 @@ static Plt *newtestplt(Arena *a, iz cap)
         if (!(plt->status = setjmp(*plt->oom))) { \
             char *argv[] = {"uuniq", __VA_ARGS__, 0}; \
             i32 argc = countof(argv) - 1; \
-            plt->status = uuniq(argc, (u8 **)argv, plt); \
+            plt->status = uuniq_main(argc, (u8 **)argv, plt); \
         } \
         affirm(r == plt->status); \
         affirm(r!=STATUS_OK || equals(plt->output, s)); \
@@ -1595,7 +1590,7 @@ static void test_random(Arena scratch)
             plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt);
+            i32 status = uuniq_main(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1616,7 +1611,7 @@ static void test_random(Arena scratch)
             plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-d", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt);
+            i32 status = uuniq_main(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1639,7 +1634,7 @@ static void test_random(Arena scratch)
             plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-u", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt);
+            i32 status = uuniq_main(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1663,7 +1658,7 @@ static void test_random(Arena scratch)
             plt.mem = (Mem){t.beg, t.end-t.beg};
             char *argv[] = {"uuniq", "-c", 0};
             i32 argc = countof(argv) - 1;
-            i32 status = uuniq(argc, (u8 **)argv, &plt);
+            i32 status = uuniq_main(argc, (u8 **)argv, &plt);
 
             affirm(status == STATUS_OK);
             affirm(equals(plt.output, expectedoutput));
@@ -1788,7 +1783,7 @@ static void runbench(char *cmd, Plt *plt, Arena a) {
         plt->inpos = 0;
         plt->mem = (Mem){a.beg, a.end-a.beg};
         i64 total = -perf_counter();
-        i32 r = uuniq(0, 0, plt);
+        i32 r = uuniq_main(0, 0, plt);
         affirm(r == STATUS_OK);
         total += perf_counter();
         best = total<best ? total : best;
@@ -1909,7 +1904,7 @@ static void plt_exit(Plt *, i32 r)
 int main(int argc, char **argv)
 {
     Plt plt = {{0, 1, 2}};
-    i32 r = uuniq(argc, (u8 **)argv, &plt);
+    i32 r = uuniq_main(argc, (u8 **)argv, &plt);
     _exit(r);
 }
 
