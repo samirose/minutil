@@ -1909,7 +1909,8 @@ static void plt_exit(Plt *, i32 r)
 int main(int argc, char **argv)
 {
     Plt plt = {{0, 1, 2}};
-    return uuniq(argc, (u8 **)argv, &plt);
+    i32 r = uuniq(argc, (u8 **)argv, &plt);
+    _exit(r);
 }
 
 #endif
