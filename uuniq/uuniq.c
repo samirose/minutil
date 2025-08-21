@@ -327,6 +327,7 @@ static void refill(Input *b)
 
 typedef struct {
     Str text;
+    u64 hash;
     b32 inbuf; // true if text is viewing the input buffer
 } Inputline;
 
@@ -335,13 +336,17 @@ typedef struct {
 static Inputline nextline(Input *b, Arena *a)
 {
     Inputline line = {0};
+    u64 hash = 0x100;
     do {
         if (b->off == b->len) {
             refill(b);
         }
 
         i32 cut = b->off;
-        for (; cut<b->len && b->buf[cut]!='\n'; cut++);
+        for (; cut<b->len && b->buf[cut]!='\n'; cut++) {
+            hash ^= b->buf[cut];
+            hash *= 1111111111111111111u;
+        }
         b32 found = cut < b->len;
 
         Str tail  = {0};
@@ -361,6 +366,7 @@ static Inputline nextline(Input *b, Arena *a)
         }
         line.text = concat(a, line.text, tail);
     } while (!b->eof);
+    line.hash = hash;
     return line;
 }
 
@@ -498,19 +504,9 @@ struct Strset {
     iz count;
 };
 
-static u64 hash64(Str s)
+static Strset** lookup(Strset **set, Str str, u64 hash)
 {
-    u64 h = 0x100;
-    for (iz i = 0; i < s.len; i++) {
-        h ^= s.data[i];
-        h *= 1111111111111111111u;
-    }
-    return h;
-}
-
-static Strset** lookup(Strset **set, Str str)
-{
-    for (uint64_t h = hash64(str); *set && !equals(str, (*set)->str); h <<= 2) {
+    for (uint64_t h = hash; *set && !equals(str, (*set)->str); h <<= 2) {
         set = &(*set)->child[h>>62];
     }
     return set;
@@ -729,7 +725,7 @@ static Strset *recordline(Strset **lineset, Strset **prev, Input *bi, Arena *a)
     if (!line.text.len && bi->eof) {
         return 0;
     }
-    Strset **entry = lookup(lineset, line.text);
+    Strset **entry = lookup(lineset, line.text, line.hash);
     if (!*entry) { // Initially seen line
         *entry = new(&t, Strset);
         (*entry)->str = line.inbuf ? clone(&t, line.text) : line.text;
